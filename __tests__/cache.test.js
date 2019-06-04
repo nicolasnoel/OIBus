@@ -17,7 +17,7 @@ describe('Cache', () => {
   })
 
   test('constructor without folder creation', () => {
-    fs.existsSync = jest.fn(() => false)
+    fs.existsSync.mockReturnValue(false)
 
     const cache = new Cache(engine)
 
@@ -33,7 +33,7 @@ describe('Cache', () => {
   })
 
   test('constructor with folder creation', () => {
-    fs.existsSync = jest.fn(() => true)
+    fs.existsSync.mockReturnValue(true)
 
     const cache = new Cache(engine)
 
