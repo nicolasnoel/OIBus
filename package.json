@@ -12,6 +12,7 @@
     "build-client": "webpack --mode production",
     "build-doc": "esdoc",
     "test": "jest",
+    "test-coverage": "jest --coverage",
     "lint": "eslint src"
   },
   "keywords": [
