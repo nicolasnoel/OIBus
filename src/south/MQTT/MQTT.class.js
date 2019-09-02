@@ -4,10 +4,12 @@ const ProtocolHandler = require('../ProtocolHandler.class')
 class MQTT extends ProtocolHandler {
   /**
    * Initiate connection and start listening.
+   * @todo: Warning: this protocol needs rework to be production ready
    * @return {void}
    */
   connect() {
     super.connect()
+    this.topics = {}
     this.listen()
   }
 
@@ -17,13 +19,15 @@ class MQTT extends ProtocolHandler {
    */
   listen() {
     const { mqttProtocol, server, port, username, password, points } = this.dataSource
-    this.client = mqtt.connect(
-      `${mqttProtocol}://${server}`,
-      { port, username, password: Buffer.from(password) },
-    )
-    points.forEach((point) => {
-      const { topic, pointId, doNotGroup = false } = point
-      this.client.on('connect', () => {
+    this.client = mqtt.connect(`${mqttProtocol}://${server}`, { port, username, password: Buffer.from(this.decryptPassword(password)) })
+    this.client.on('error', (error) => {
+      this.logger.error(error)
+    })
+
+    this.client.on('connect', () => {
+      points.forEach((point) => {
+        const { topic, pointId } = point
+        this.topics[topic] = { pointId }
         this.client.subscribe(topic, (error) => {
           if (error) {
             this.logger.error(error)
@@ -31,17 +35,19 @@ class MQTT extends ProtocolHandler {
         })
       })
 
-      this.client.on('message', (topic1, message) => {
-        if (topic1 === topic) {
-          // message is Buffer
-          this.addValue(
+      this.client.on('message', (topic, message) => {
+        this.logger.silly(`topic ${topic}, message ${message}`)
+        try {
+          /** @todo: below should send by batch instead of single points */
+          this.addValues([
             {
+              pointId: this.topics[topic].pointId,
+              timestamp: new Date().toISOString(),
               data: message.toString(),
-              timestamp: new Date().getTime(),
-              pointId,
             },
-            doNotGroup,
-          )
+          ])
+        } catch (error) {
+          this.logger.error(error)
         }
       })
     })

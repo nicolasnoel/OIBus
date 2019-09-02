@@ -3,9 +3,11 @@ import PropTypes from 'prop-types'
 import { Button, Form, FormGroup, Label, Input } from 'reactstrap'
 import Select from './components/Select.jsx'
 import apis from './services/apis'
+import { AlertContext } from './context/AlertContext'
 
 const NewApplicationRow = ({ apiList, addApplication }) => {
   const [application, setApplication] = React.useState({ applicationId: '', enable: false, api: 'Console' })
+  const { setAlert } = React.useContext(AlertContext)
 
   /**
    * Updates the application's state
@@ -16,7 +18,7 @@ const NewApplicationRow = ({ apiList, addApplication }) => {
     const { target } = event
     const { value } = target
     //  update the new application's state
-    setApplication(prevState => ({ ...prevState, [target.name]: value }))
+    setApplication((prevState) => ({ ...prevState, [target.name]: value }))
   }
 
   /**
@@ -34,11 +36,12 @@ const NewApplicationRow = ({ apiList, addApplication }) => {
       setApplication({ applicationId: '', enable: false, api: 'Console' })
     } catch (error) {
       console.error(error)
+      setAlert({ text: error.message, type: 'danger' })
     }
   }
 
   return (
-    <Form>
+    <Form className="oi-add-new">
       <FormGroup>
         <Label for="Id">
           New Application ID

@@ -1,5 +1,5 @@
 module.exports = {
-  title: 'Configure SQLFile',
+  title: 'Configure FolderScanner',
   type: 'object',
   properties: {
     dataSourceId: {
@@ -13,46 +13,28 @@ module.exports = {
     },
     protocol: {
       type: 'string',
-      enum: ['SQLFile'],
+      enum: ['FolderScanner'],
       title: 'Protocol',
-      default: 'SQLFile',
+      default: 'FolderScanner',
     },
-    driver: {
+    inputFolder: {
       type: 'string',
-      enum: ['mssql', 'mysql', 'postgresql', 'oracle'],
-      title: 'SQL driver',
-      default: 'mssql',
+      title: 'Input Folder',
     },
-    host: {
-      type: 'string',
-      title: 'Host',
-      default: 'localhost',
+    preserveFiles: {
+      type: 'boolean',
+      title: 'Preserve Files',
+      default: true,
     },
-    port: {
+    minAge: {
       type: 'number',
-      title: 'Port',
-      default: 1433,
+      title: 'Minimum Age',
+      default: 1000,
     },
-    username: {
+    regex: {
       type: 'string',
-      title: 'Username',
-    },
-    password: {
-      type: 'string',
-      title: 'Password',
-    },
-    query: {
-      type: 'string',
-      title: 'Query',
-    },
-    delimiter: {
-      type: 'string',
-      title: 'Delimiter',
-      default: ',',
-    },
-    tmpFolder: {
-      type: 'string',
-      title: 'Temporary folder',
+      title: 'Regex',
+      default: '.txt',
     },
     points: {
       type: 'array',
@@ -67,7 +49,7 @@ module.exports = {
           scanMode: {
             title: 'Scan Mode',
             type: 'string',
-            default: 'every5second',
+            default: 'every5Second',
           },
         },
       },

@@ -1,16 +1,17 @@
 import React from 'react'
 import Form from 'react-jsonschema-form-bs4'
 import { withRouter } from 'react-router-dom'
-import { Button } from 'reactstrap'
+import { Button, Col } from 'reactstrap'
 import PropTypes from 'prop-types'
-import ReactJson from 'react-json-view'
 import Modal from '../client/components/Modal.jsx'
 import apis from '../client/services/apis'
+import uiSchema from './uiSchema.jsx'
+import { AlertContext } from '../client/context/AlertContext'
 
 const ConfigureProtocol = ({ match, location }) => {
   const [configJson, setConfigJson] = React.useState()
   const [configSchema, setConfigSchema] = React.useState()
-  const [engineJson, setEngineJson] = React.useState()
+  const { setAlert } = React.useContext(AlertContext)
 
   /**
    * Sets the configuration JSON
@@ -21,40 +22,35 @@ const ConfigureProtocol = ({ match, location }) => {
     setConfigJson(formData)
   }
 
-  const updateEngine = (configEngine) => {
-    setEngineJson(configEngine)
-  }
-
   /**
    * Acquire the schema and set the configuration JSON
    * @returns {void}
    */
   React.useEffect(() => {
     const { protocol } = match.params
-    const { formData, configEngine } = location
-    updateEngine(configEngine)
+    const { formData } = location
 
     apis.getSouthProtocolSchema(protocol).then((schema) => {
+      delete schema.properties.points
       setConfigSchema(schema)
       updateForm(formData)
+    }).catch((error) => {
+      console.error(error)
+      setAlert({ text: error.message, type: 'danger' })
     })
   }, [])
 
   /**
-   * Make modification based on engine config to the config schema
-   * @returns {object} config schema
+   * Handles the form's submittion
+   * @param {*} param0 Object containing formData field
+   * @returns {void}
    */
-  const modifiedConfigSchema = () => {
-    // check if all type configuration are already set
-    if (configJson && engineJson && configSchema) {
-      const { scanMode } = configSchema.properties.points.items.properties
-      const { scanModes } = engineJson
-      // check if scanMode, scanModes exists and enum was not already set
-      if (scanMode && scanMode.enum === undefined && scanModes) {
-        scanMode.enum = scanModes.map(item => item.scanMode)
-      }
-    }
-    return configSchema
+  const handleSubmit = ({ formData }) => {
+    const { dataSourceId } = formData
+    apis.updateSouth(dataSourceId, formData).catch((error) => {
+      console.error(error)
+      setAlert({ text: error.message, type: 'danger' })
+    })
   }
 
   /**
@@ -66,16 +62,7 @@ const ConfigureProtocol = ({ match, location }) => {
     const { formData } = form
 
     updateForm(formData)
-  }
-
-  /**
-   * Handles the form's submittion
-   * @param {*} param0 Object containing formData field
-   * @returns {void}
-   */
-  const handleSubmit = ({ formData }) => {
-    const { dataSourceId } = formData
-    apis.updateSouth(dataSourceId, formData)
+    handleSubmit(form)
   }
 
   /**
@@ -89,35 +76,37 @@ const ConfigureProtocol = ({ match, location }) => {
       // TODO: Show loader and redirect to main screen
     } catch (error) {
       console.error(error)
+      setAlert({ text: error.message, type: 'danger' })
     }
   }
 
-  const log = type => console.info.bind(console, type)
+  const log = (type) => console.info.bind(console, type)
   return (
-    <>
+    <Col xs="12" md="6">
       {configJson && configSchema && (
         <>
           <Form
             formData={configJson}
             liveValidate
             showErrorList={false}
-            schema={modifiedConfigSchema()}
+            schema={configSchema}
+            uiSchema={uiSchema(configJson.protocol)}
             autocomplete="on"
             onChange={handleChange}
-            onSubmit={handleSubmit}
             onError={log('errors')}
-          />
+          >
+            <></>
+          </Form>
           <Modal show={false} title="Delete data source" body="Are you sure you want to delete this data source?">
-            {confirm => (
+            {(confirm) => (
               <Button color="danger" onClick={confirm(handleDelete)}>
                 Delete
               </Button>
             )}
           </Modal>
-          <ReactJson src={configJson} name={null} collapsed displayObjectSize={false} displayDataTypes={false} enableClipboard={false} />
         </>
       )}
-    </>
+    </Col>
   )
 }
 

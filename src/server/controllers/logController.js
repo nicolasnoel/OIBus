@@ -10,12 +10,13 @@ const databaseService = require('../../services/database.service')
  * @return {void}
  */
 const getLogs = async (ctx) => {
-  const databasePath = ctx.app.engine.config.engine.logParameters.sqliteFilename
+  const { engineConfig } = ctx.app.engine.configService.getConfig()
+  const databasePath = engineConfig.logParameters.sqliteFilename
   const now = Date.now()
   const dayAgo = new Date(now - 86400000)
   const fromDate = ctx.query.fromDate || new Date(dayAgo).toISOString()
   const toDate = ctx.query.toDate || new Date(now).toISOString()
-  const verbosity = ctx.query.verbosity || '%'
+  const verbosity = ctx.query.verbosity.replace(/\[|\]/g, '').split(',')
 
   const logs = await databaseService.getLogs(databasePath, fromDate, toDate, verbosity)
   ctx.ok(logs)

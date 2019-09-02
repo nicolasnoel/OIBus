@@ -5,17 +5,25 @@
         "password": "d74ff0ee8da3b9806b18c877dbf29bbde50b5bd8e4dad7a3a725000feb82e8f1",
         "filter": [
             "127.0.0.1",
-            "::1"
+            "::1",
+            "::ffff:127.0.0.1"
         ],
         "logParameters": {
-            "consoleLevel": "debug",
+            "consoleLevel": "silly",
             "fileLevel": "debug",
             "filename": "./logs/journal.log",
             "maxsize": 1000000,
             "maxFiles": 5,
             "tailable": true,
             "sqliteLevel": "debug",
-            "sqliteFilename": "./logs/journal.db"
+            "sqliteFilename": "./logs/journal.db",
+            "sqliteMaxFileSize": 500000,
+            "agentLevel": "silly"
+        },
+        "caching": {
+            "cacheFolder": "./cache",
+            "archiveFolder": "./cache/archived/",
+            "archiveMode": "archive"
         },
         "proxies": [
             {
@@ -24,14 +32,9 @@
                 "host": "localhost",
                 "port": 8888,
                 "username": "user",
-                "password": "password"
+                "password": "TYO2wRE3ZW+ILqADfZrJR528GwzgXyhHkLYATfvSdUgP6Nz64FzeV2fVxAGUra5cu2cnzxlbZngWMg7xyrsv6IsVJD0l/tK1d/M3DMbxM6W0UWYamlYoZGdCeqyKClI84wqy7o5mg9pFacAoI2WExW7Cgk5Sz55R+ADjtkXnMLZC8GjtGWfquCWFgnxDxdgw5Yg757qwDJ21NHyJISiu3wee5JGje7+pf+mSjNLXeN1pcu/1A0jl7bXzI/7QTXOUa7n9bRZmJOsLgDj1crhsnWKFcUXmHagqmdafVz/6tjoRW/Z0JpIxAq1Gy+p/ZTGPPhSm3/pSW7tE9no21YDPNkJV0cSqw3wPFfaO3SiKsj+dwoy4ZzF/znori1lFsebyLnRHsU15Cth0LLA6OgNDd57FKFHtP0c5aDrB9bDHfO0+w7oUGTA+rO0L8/SFJ7FXEonI7CINPTQuJyXhHW4a83AZx3oejwmnSTnaXNmdHXDCd4nd/w2xsUx3cpqt61V19UUR7hKbpnCwjFh00tKCzuH3i3IG7b3a7QPpSbwog7P0utuaBjLDgO6X+Svo8dQXqTAv3L4goeS95lkSeHZuOP0fWS9/NJwWy8D4VbUEa3LUALskYKQ+WpjNMi8141yPpF20KhXbyrpQ3EpWXj/9pkEkkfJt6J9YIZT2NX4n+hg="
             }
         ],
-        "caching": {
-            "cacheFolder": "./cache",
-            "archiveFolder": "./cache/archived/",
-            "archiveMode": "archive"
-        },
         "scanModes": [
             {
                 "scanMode": "everySecond",
@@ -52,6 +55,10 @@
             {
                 "scanMode": "every15DaysAt9",
                 "cronTime": "* * /15 9"
+            },
+            {
+                "scanMode": "listen",
+                "cronTime": "listen"
             }
         ],
         "types": [
@@ -132,11 +139,10 @@
                 "mqttProtocol": "mqtts",
                 "port": 8883,
                 "username": "bai",
-                "password": "nDpvYGwXKU3DMFt7/wj+IFWVB120HWO6SPdA0EwMRfWTQCG+KXjCQyTR84aIzBRkP4x0ZKAnOuXrUSKqkmoFnpkOFPvHF3hxICc8YI4Pyh/QYs+2Tyh0cFVj5PSixwBRMuHHDZ1na1HqYdKw6cq+07lNzaAVu5vI09GYqU/wJPuAO9mcRu+SLHLS1hu0lYV8bYMS/jD+BFXLEWVls4RHNOi2gHzel6H9ALlby5SLZQq774+vkPhVQay9x1yLiV3S5hU4HhQDElss+QdGnbLusRvmB2P37GO8/DV+zKptwtGbH26lmwxIyuaYrR+QKSCwdRUpm/adCMeJqECFNrajby8T8bZYNfi5xvF2EEZ+/2DklnNJi+XiyITYwDBjkhz2rPYy8Q8tq9efEIudENDzCtYukJ1BM1Jg6amdXbh18KxU2zGRsWfSQd9b3LWlz/YMdDu1FfYqeMmqmYZjoLrFBkZM3M4cA8NKMfJZbtxd4Menz95JNQROVe3UIqOsj62fIl53OiQc19fnXS2YHfFE4pSsol0SpyFGGVq0fgqfJGDTOzi2ojqwR+tGttigpqliVAmeVW8Nk5hFqLLl10YCjW2rmWCn5UaFEaH5hGmk3+8XSzRIz2VI0tpD+w1u2DGcgcvbQrYhS4EI/26q63MKN198p/1AVtweZXtuhnpQOc4=",
+                "password": "k6A5tZP7CUeAxW0rcfi+Kg3zz3ADDJxjZBFWRyr0BtMjFInq3SYAhgmL1wop6gpI2rINMvClA0GpjSToDarUCpvTIfsKm4Zzpiv6YWrNzElL3gsxfejOaGplv0nQp79Kiynocnu+bHC2GgyoB5qi4uo5x33Gq4IIh3Z8dEEQggJUr8aSDTsv+MlP6ggD8dLOLtRTEWPXUQGaaumLTyb+Gpm2bmEr819o8MRzfqUDLITWaDCFoE58lTIRPcyfvL6QPQ0lAJfzua40r2D0qZDLGstDfh+7XHpW7a/Y7Bu7DM4ryBPORwe4wP/B05DaR+YqbdXEKIaAxtvo7vZzarIZDBuKKKh3W21TYTWE+GSCy48SsCKiPbZaV865m+0XaY5QOv377MrTJ2VKgcrsMmD0nVJP2PvMCT5Ac+oxUMRi2pReORNYVFvYFGls6inIN1Ga09FJHd/akToMFHpJO58dEL95mb2EemFdHtjsJR1ewjjsDgBYPsVuPXpTNpv0U1pK/EeeLz8k3zfrsWtqPVSo/s62ltP56W5GOdk3MhT2C57Y/GPRJE4NKDEifgDfzghGQGVcKjpnZ5gfTIAvx9CNMb7K0hrkPezUJimj2fh6b6tfNVJr+73kNTRWMUuF+LQxUwBWO3TJTM7ENCOv1msS+qJoBXw9Bmjw9Wos2drZb/I=",
                 "points": [
                     {
                         "pointId": "/fttest.base/Tank 5.tank/Sensor22.temperature",
-                        "doNotGroup": true,
                         "scanMode": "listen",
                         "topic": "temperatureTank1"
                     },
@@ -257,29 +263,62 @@
                 ]
             },
             {
-                "dataSourceId": "RawFileTransfer",
-                "enabled": true,
-                "protocol": "RawFile",
+                "dataSourceId": "FolderScanner",
+                "enabled": false,
+                "protocol": "FolderScanner",
                 "scanMode": "every5Second",
-                "inputFolder": "./tests/RawFile/input/",
+                "inputFolder": "./tests/FolderScanner/input/",
                 "preserveFiles": false,
                 "minAge": 1000,
                 "regex": ".txt"
             },
             {
-                "dataSourceId": "SQLFileTransfer",
-                "enabled": false,
-                "protocol": "SQLFile",
-                "scanMode": "every5Second",
+                "dataSourceId": "SQLDbToFile",
+                "enabled": true,
+                "protocol": "SQLDbToFile",
                 "driver": "mssql",
-                "host": "localhost",
+                "host": "192.168.0.11",
                 "port": 1433,
-                "username": "SA",
-                "password": "kvT92GHHYK/uHrpl5gSa57+5zlZXu+X3KvVjjAn6XrXw+CKXd8oFLhQ5wMJ8iU2QQ54agrixt8EBb5MrIaJfxbRXo2ejX8obKzyc5TbInxTz4stfqCjMl99Nd4xgsr+GqF+1ZjnsN9lU3MSjXoi9+VorBlOLco/Zon0kF3UZDY3cCwpoUs9W3vbiBWIlxWEPb48Wf01x0RmI+fGQPEXcPCXT/j8MuwfPUho+JaC4HIaBGD29Nv/RtW9zw7g5LSJVNnvquw/X6ts7JeCsiFppwSKzseNPQ/IfeWME+ZWZ3MGSNZHIWOspZdEZe3c25HCFikgsRtCjTshSFeO9bFgjr4eZj6GC3WArZ8bh9WnAijVeI1FRNwyYLwRTIu7zjM30fFCGDzZFBpJ/f4eCBUgqy8pdJQAuE48c2O/CiNJBA+AlafUhP9HWHffMtRSJeMholu4oywSc/d6yKwFkwGcRfRYnnYsb0WLCbUUhnPXyyCvewnocGXe6J2cfAgHr1vg66znpYm4yMmKQdGyFp6ZktU3/txQeqC/cB4f8YFjeZtyKnl3rAWYo4iJov9YrcEzLbHoDTkAlEwhT8duBb6YmIrmtZUrmaYXLrma2xyCljiSVumRvGHuSyvKgszqqL7cc3SlNHAJhhcK9t6tRllZnNA4S0bx6y9fXOIT+9pLXhQ8=",
-                "database": "TestDB",
-                "query": "SELECT created_at AS timestamp, value1 AS temperature FROM history WHERE created_at > '$date1' AND created_at <= '$date2'",
+                "username": "oibus_user",
+                "password": "eOpRHLUyRPDMaek0ozGTxeO8U0t4ffaLdlJo3DxEvM+l/WIQ7CDyzmFrkb1JuwgKVfEm4Ngp1EWwrFJxPrlRqJsBzvomOtJANsRcRSKtk801rPiEEGBfUxjz5Sm659d8PgUifkXunl3Pj2mlxaDbsX6DKjRIuXKTdea3MT3i5N+x6a8Z21lOuckLCy+BAqIDEtMdW5+u9F75W2Mi3jDNelyaQlVJP01YnGDUt0PDQxtM8t6odIjnvypFdEXAZr8B7Mwjcickbm6lFcIKkArWbROVXXduNjiKgOJ+GzP3lJP4eU5WjfFrnNXJP1cq2bbChI5Jc/tl71aaVn/6YNNsZ4uVBzaPyGO7s+w03uS1qCAHXYakLxSCVXLP+WGMihKa7Of5ouZm6ZgVI64DeXhLr4ToYqBbz53Uj4sPgbQ5ZOzVpIcHUHCVPnqsmGzJVV2IFxBE/6m70SgNBJCXtuqawch5zxYz1H7QXkMIVirOoR1ubAkZWcCt5DAFZBiioDVpKQOfjRGJCYcM4MxP8LsYFFJztOn910q/VYSKyArzoSxDcRzCzob4MlJHNtv7OysFAHzFY9AaAdbeVqxpgwdlqITr4Gk1aITvsIYLM+VZ3E2YIzp2Ht2BEZrdsRt9oIqvl30Q7eJoxRQGDwIBmEU6cJqgFBpnUYooHW/GCHtFR4w=",
+                "database": "oibus",
+                "query": "SELECT created_at AS timestamp, value1 AS temperature FROM oibus_test WHERE created_at > @date1 AND created_at <= @date2",
+                "connectionTimeout": 1000,
+                "requestTimeout": 1000,
+                "filename": "sqlfile-@date.csv",
                 "delimiter": ",",
-                "tmpFolder": "./tests/SQLFile",
+                "scanMode": "every5Second"
+            },
+            {
+                "dataSourceId": "OPC-HDA",
+                "enabled": false,
+                "protocol": "OPCHDA",
+                "agentFilename": "./deps/win/HdaAgent/HdaAgent.exe",
+                "tcpPort": 3333,
+                "host": "opcserver",
+                "serverName": "Matrikon.OPC.Simulation",
+                "scanGroups": [
+                    {
+                        "aggregate": "Raw",
+                        "scanMode": "every5Second",
+                        "resampling": "1mn"
+                    },
+                    {
+                        "aggregate": "Raw",
+                        "scanMode": "every20Second",
+                        "resampling": "1mn"
+                    }
+                ],
+                "points": [
+                    {
+                        "pointId": "Random.Int1",
+                        "scanMode": "every5Second"
+                    },
+                    {
+                        "pointId": "Random.Real4",
+                        "scanMode": "every20Second"
+                    }
+                ]
             }
         ]
     },
@@ -300,7 +339,8 @@
                 "caching": {
                     "sendInterval": 5000,
                     "retryInterval": 10000,
-                    "groupCount": 3
+                    "groupCount": 3,
+                    "maxSendCount": 100
                 }
             },
             {
@@ -317,26 +357,27 @@
                 "caching": {
                     "sendInterval": 5000,
                     "retryInterval": 10000,
-                    "groupCount": 3
+                    "groupCount": 3,
+                    "maxSendCount": 100
                 }
             },
             {
-                "applicationId": "RawFileSender",
+                "applicationId": "OIAnalyticsFile",
                 "enabled": true,
-                "api": "RawFileSender",
-                "RawFileSender": {
+                "api": "OIAnalyticsFile",
+                "OIAnalyticsFile": {
                     "host": "https://demo.oianalytics.fr",
                     "endpoint": "/api/optimistik/data/values/upload",
                     "authentication": {
                         "type": "Basic",
                         "username": "QFPELALDNSUO6BUV8SJ",
-                        "password": "fhzdFp40Wo3z9tHOILdUOXGbwPcQGbwaZh6DTms5lxA+qsvyPuGNYi/7wo18izoEbvGYjt19i00HhOAkxP6RrhHLgU5qGxjoOVn8qhJ4GwAg9PDmiII534KR2FpsRt3X3MVFRWeZO6TSDyXbcDVMFgY0UyNngGUOW/81GjQyNpeV4/KsGErNudySv82lIycMxZevJgitSaFhNekAfmfceSKyHXEApfH4swq7lYq9wInptM5Frw6Oq6rh6OW7pilqe4E/16BlM8kMg6emI3P54UlVTL5J/wGMq4xWcbrfrHjUI+ESKpmaqzQaLJJIMfllxHmBD6s13McrpaOGTJia+2LSZ0XWfe8T3t4rESVXY4Zpo3cMu+GBkPtCpgTHWQ9NgGnDZKzlFLoxj/8HhXJZzXmhXL+8/ZFL/MbDYo4hWfdUiD6nQ9pU6DTpTM3ijB+iqCBtCshsbSH3yWh/qayX2mzX2j+jcovP5lCmkPvWISH8bmiBG7s8yDysEIsrRfTQn81ISCiOV3LCZYeXD2woqIpD/3nh+XxHbxeMmdClkuZwpVnZS2SDSvV6X+d3Ywr/i6ylWLsvfg+TIkPd7LoM7tYRbei8LNGY1/WgBJNK1ZXNXC0gLLd2viTFU3T/+syF6sfGMAG04bGrawq2xrKGO0OqWQGF17KnzDz/rDicizU="
+                        "password": "cKagbxab4AdjG0BarsNv+MsF09mL8yOHkE092I5fBqZ32FrrjCA0Gs2vurYD4+oAL5yYlJQehktCGgXO/WVZPvVcKe7D7te9rpx/PLCQSwJf8XiJ9YBizST188syUqVTcdRZBVO86GgyMSnSqUiJm3ZwIwfwbmShBAhSLFDPpcjZwhAMqicKwqGKAfSYmcy7pzVua8NnjsVeAFXalZgzO7k3nGgTdC5XIwzlSnqDwq8iBR9e1PdN9eepnrJmuxUcLUkMELOfefwWFOGtTPbcwQ282e12Oq7VtJ6esqKKfYRAf30jvpNopnI68YLEGybjenbsV6cXRkCjCCH92fIq2RAqIuWIuC+C6WRyiSUcZ1v3ElGuIBAv3X0ePVfEjiI2n0POGR41PgW69aOy0aPQRuNsy1eSZd7s+5IUz90166g+gRSnN8FMjAiHjXziV6EIBJGGgmAj6+HwZYul3p+e+tTyCyHI2nLWtH23qS+37xA3PKx1oSJqJOIlJirXMrnfdMGw3hh/PFCtS2uUBwyxPevnbBezhL1aqOfjiIM2bRSzAYu+Bwv1ivYo5qvE5sez2J8ek2IZDFARZIxJkZzBFobNU5sFSPKzps2lCHm1t2frEQ92fPmoy6NEl0NdUqby1MjREvKOS61JSA7fLltnPaKHhPiP4JEG61oigOgt/Sk="
                     },
                     "proxy": "",
                     "stack": "request"
                 },
                 "caching": {
-                    "sendInterval": 5000,
+                    "sendInterval": 15000,
                     "retryInterval": 10000
                 }
             },
@@ -375,6 +416,41 @@
                     "id": "OIBus friendly name test",
                     "frequency": 10000,
                     "proxy": "demoProxy"
+                }
+            },
+            {
+                "applicationId": "Console",
+                "enabled": true,
+                "api": "Console",
+                "minimumBuffer": 1,
+                "timeStamp": "OIBus",
+                "caching": {
+                    "sendInterval": 15000,
+                    "retryInterval": 10000,
+                    "groupCount": 1,
+                    "maxSendCount": 100
+                }
+            },
+            {
+                "applicationId": "OIConnect",
+                "enabled": false,
+                "api": "OIConnect",
+                "OIConnect": {
+                    "host": "http://localhost:2223",
+                    "endpoint": "/engine/addValues",
+                    "authentication": {
+                        "type": "Basic",
+                        "username": "admin",
+                        "password": "tqntWY15H+rxJRFMhcN4c15A7xQZQbQTXrbZ4mmOZBZ00EK7v93wbZTF4fLfWQ2beY6sWXBFhfj+/n7iMimpAkv05skIpM8lv+a/zqcGqXQIuKpLng0L4tfQkoF7G5raHw5IVZOuFVQ0Ql0zyQcvvxuy6FNokKlWEHSSo/5zQAdUKxwcJOCK3acZTIXWzhxvl1TB2i5Wo8PUD1qKXehM34T7+42IU5+0D97VIfjpslMcogXTTV1tHMvPOf36l/GB8LY6JoJXr/JCaZdO+p28MCWVhyNTeGb8D4ZA2Jupc6dbikBV4ty1xaMXJb8KcaImJHkWHJRnH9HcMZ/GQBkjna0DE9cuDo5z1vzWj/5X6HvGsXKdllMqv64awCSQD6ndnXLJjN3RE0EFt1fGVdIqSl233vBxL3FIeyEbO1djcFc8iMOOKPsStPkE/QYdQhKLo3YeTYKjcdafD/5Yyz2NAZ8jmoCr+y7uypFOJxwtkaDyiIgKmMyyEqbdO+rtUq3pf/cQ7jaHA1W/gqVuIsNGC0128OKwQZpBDQSgvTA2kDoo0uCbS7REEY9sDG0KUx7Px9KoDK7Zp0M9wOGnt697iDqLMVdxCz59sFxgXAd6TNaJjlCdcIbcRTiyDxyhIx4nMCTfyt58lB9LwgUcBzvyBh3IEj3F7Imd+Xi73wfQ4tc="
+                    },
+                    "proxy": "",
+                    "stack": "axios"
+                },
+                "caching": {
+                    "sendInterval": 5000,
+                    "retryInterval": 10000,
+                    "groupCount": 10,
+                    "maxSendCount": 10
                 }
             }
         ]

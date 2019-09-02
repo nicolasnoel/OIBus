@@ -14,18 +14,6 @@ module.exports = {
     api: {
       type: 'string',
       title: 'API',
-      enum: ['InfluxDB'],
-      default: 'Console',
-    },
-    minimumBuffer: {
-      type: 'number',
-      title: 'Minimum buffer',
-      default: 10,
-    },
-    maxTimeBuffer: {
-      type: 'number',
-      title: 'Maximum time bubber',
-      default: 500,
     },
     InfluxDB: {
       type: 'object',
@@ -74,9 +62,19 @@ module.exports = {
         groupCount: {
           type: 'number',
           title: 'Group count',
-          default: 6,
+          default: 10,
+        },
+        maxSendCount: {
+          type: 'number',
+          title: 'Max Send Count',
+          default: 100,
         },
       },
+    },
+    subscribedTo: {
+      type: 'array',
+      title: 'Subscribed To',
+      items: { type: 'string' },
     },
   },
 }

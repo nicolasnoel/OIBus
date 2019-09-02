@@ -17,11 +17,6 @@ module.exports = {
       enum: ['TimescaleDB'],
       default: 'Console',
     },
-    minimumBuffer: {
-      type: 'number',
-      title: 'Minimum buffer',
-      default: 10,
-    },
     TimescaleDB: {
       type: 'object',
       title: 'TimescaleDB',
@@ -67,6 +62,11 @@ module.exports = {
           default: 6,
         },
       },
+    },
+    subscribedTo: {
+      type: 'array',
+      title: 'Subscribed To',
+      items: { type: 'string' },
     },
   },
 }

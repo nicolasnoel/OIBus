@@ -3,7 +3,8 @@ const csv = require('fast-csv')
 const ProtocolHandler = require('../ProtocolHandler.class')
 
 /**
- * Class CSV
+ * Class CSV.
+ * @todo: Warning: this protocol needs rework to be production ready.
  */
 class CSV extends ProtocolHandler {
   /**
@@ -53,7 +54,7 @@ class CSV extends ProtocolHandler {
     let timeColumnIndex
     let firstLine = []
     let lineNumber = 0
-    const csvFile = csv()
+    const csvFile = csv.parse()
       .on('data', (csvObjects) => {
         lineNumber += 1
         if (hasFirstLine) {
@@ -64,26 +65,30 @@ class CSV extends ProtocolHandler {
           } else {
             points.forEach((point) => {
               let typeColumn = {}
-              if (typeof Object.values(point.CSV)[0] === 'number') {
-                typeColumn = point.CSV
+              if (typeof point.value === 'number') {
+                typeColumn = {
+                  value: point.value,
+                  quality: point.quality,
+                }
               } else {
-                Object.keys(point.CSV).forEach((key) => {
-                  typeColumn[key] = firstLine.indexOf(point.CSV[key])
-                })
+                typeColumn = {
+                  value: firstLine.indexOf(point.value),
+                  quality: firstLine.indexOf(point.quality),
+                }
               }
               const data = {}
               Object.keys(typeColumn).forEach((key) => {
                 data[key] = csvObjects[typeColumn[key]]
               })
-              const timestamp = new Date(csvObjects[timeColumnIndex]).getTime()
-              this.addValue(
+              const timestamp = new Date(csvObjects[timeColumnIndex]).toISOString()
+              /** @todo: below should send by batch instead of single points */
+              this.addValues([
                 {
                   pointId: point.pointId,
                   timestamp,
-                  data: JSON.stringify(data),
+                  data: { value: JSON.stringify(data) },
                 },
-                point.doNotGroup,
-              )
+              ])
             })
           }
         } else {
@@ -96,15 +101,15 @@ class CSV extends ProtocolHandler {
             Object.keys(typeColumn).forEach((key) => {
               data[key] = csvObjects[typeColumn[key]]
             })
-            const timestamp = csvObjects[timeColumn]
-            this.addValue(
+            const timestamp = new Date(csvObjects[timeColumn]).toISOString()
+            /** @todo: below should send by batch instead of single points */
+            this.addValues([
               {
                 pointId: point.pointId,
                 timestamp,
-                data: JSON.stringify(data),
+                data: { value: JSON.stringify(data) },
               },
-              point.doNotGroup,
-            )
+            ])
           })
         }
       })

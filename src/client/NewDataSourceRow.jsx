@@ -3,9 +3,11 @@ import PropTypes from 'prop-types'
 import { Button, Form, FormGroup, Label, Input } from 'reactstrap'
 import Select from './components/Select.jsx'
 import apis from './services/apis'
+import { AlertContext } from './context/AlertContext'
 
 const NewDataSourceRow = ({ protocolList, addDataSource }) => {
   const [dataSource, setDataSource] = React.useState({ dataSourceId: '', enable: false, protocol: 'Modbus' })
+  const { setAlert } = React.useContext(AlertContext)
 
   /**
    * Updates the data source's state
@@ -16,7 +18,7 @@ const NewDataSourceRow = ({ protocolList, addDataSource }) => {
     const { target } = event
     const { value } = target
     //  update the new data source's state
-    setDataSource(prevState => ({ ...prevState, [target.name]: value }))
+    setDataSource((prevState) => ({ ...prevState, [target.name]: value }))
   }
 
   /**
@@ -38,11 +40,12 @@ const NewDataSourceRow = ({ protocolList, addDataSource }) => {
       setDataSource({ dataSourceId: '', enable: false, protocol: 'Modbus' })
     } catch (error) {
       console.error(error)
+      setAlert({ text: error.message, type: 'danger' })
     }
   }
 
   return (
-    <Form>
+    <Form className="oi-add-new">
       <FormGroup>
         <Label for="Id">
           New Data Source ID

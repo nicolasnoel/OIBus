@@ -1,5 +1,5 @@
 module.exports = {
-  title: 'Configure RawFileSender',
+  title: 'Configure OIConnect',
   type: 'object',
   properties: {
     applicationId: {
@@ -14,22 +14,22 @@ module.exports = {
     api: {
       type: 'string',
       title: 'API',
-      enum: ['RawFileSender'],
-      default: 'Console',
+      enum: ['OIConnect'],
+      default: 'OIConnect',
     },
-    RawFileSender: {
+    OIConnect: {
       type: 'object',
-      title: 'RawFileSender',
+      title: 'OIConnect',
       properties: {
         host: {
           type: 'string',
           title: 'Host',
-          default: 'https://demo.oianalytics.fr/',
+          default: 'http://localhost:2223',
         },
         endpoint: {
           type: 'string',
           title: 'Endpoint',
-          default: '/api/optimistik/data/values/upload',
+          default: '/engine/addValues',
         },
         authentication: {
           type: 'object',
@@ -54,6 +54,11 @@ module.exports = {
           type: 'string',
           title: 'Proxy',
         },
+        stack: {
+          type: 'string',
+          title: 'Stack',
+          enum: ['axios', 'request', 'fetch'],
+        },
       },
     },
     caching: {
@@ -63,14 +68,29 @@ module.exports = {
         sendInterval: {
           type: 'number',
           title: 'Send interval',
-          default: 5000,
+          default: 15000,
         },
         retryInterval: {
           type: 'number',
           title: 'Retry interval',
           default: 10000,
         },
+        groupCount: {
+          type: 'number',
+          title: 'Group count',
+          default: 6,
+        },
+        maxSendCount: {
+          type: 'number',
+          title: 'Max send count',
+          default: 20,
+        },
       },
+    },
+    subscribedTo: {
+      type: 'array',
+      title: 'Subscribed To',
+      items: { type: 'string' },
     },
   },
 }

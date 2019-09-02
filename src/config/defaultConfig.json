@@ -10,7 +10,10 @@
       "filename": "./logs/journal.log",
       "maxsize": 1000000,
       "maxFiles": 5,
-      "tailable": true
+      "tailable": true,
+      "sqliteLevel": "debug",
+      "sqliteFilename": "./logs/journal.db",
+      "sqliteMaxFileSize": 50000000
     },
     "caching": {
       "cacheFolder": "./cache",
@@ -36,17 +39,6 @@
     "dataSources": []
   },
   "north": {
-    "applications": [
-      {
-        "applicationId": "MyConsole",
-        "enabled": true,
-        "api": "Console",
-        "caching": {
-          "sendInterval": 1000,
-          "retryInterval": 1000,
-          "groupCount": 1
-        }
-      }
-    ]
+    "applications": []
   }
 }

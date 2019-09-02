@@ -1,16 +1,18 @@
 import React from 'react'
 import { withRouter } from 'react-router-dom'
 import PropTypes from 'prop-types'
-import ReactJson from 'react-json-view'
-import { Button } from 'reactstrap'
+import { Button, Col } from 'reactstrap'
 import Table from './components/table/Table.jsx'
 import NewApplicationRow from './NewApplicationRow.jsx'
 import Modal from './components/Modal.jsx'
 import apis from './services/apis'
+import { AlertContext } from './context/AlertContext'
 
 const North = ({ history }) => {
   const [applications, setApplications] = React.useState([])
   const [apiList, setApiList] = React.useState([])
+  const [dataSourceIds, setDataSourceIds] = React.useState([])
+  const { setAlert } = React.useContext(AlertContext)
 
   /**
    * Acquire the North configuration
@@ -19,6 +21,22 @@ const North = ({ history }) => {
   React.useEffect(() => {
     apis.getConfig().then(({ config }) => {
       setApplications(config.north.applications)
+    }).catch((error) => {
+      console.error(error)
+      setAlert({ text: error.message, type: 'danger' })
+    })
+  }, [])
+
+  /**
+   * Acquire the South configuration for the subscribed to list
+   * @returns {void}
+   */
+  React.useEffect(() => {
+    apis.getConfig().then(({ config }) => {
+      setDataSourceIds(config.south.dataSources.map((dataSource) => dataSource.dataSourceId))
+    }).catch((error) => {
+      console.error(error)
+      setAlert({ text: error.message, type: 'danger' })
     })
   }, [])
 
@@ -29,6 +47,9 @@ const North = ({ history }) => {
   React.useEffect(() => {
     apis.getNorthApis().then((application) => {
       setApiList(application)
+    }).catch((error) => {
+      console.error(error)
+      setAlert({ text: error.message, type: 'danger' })
     })
   }, [])
 
@@ -37,7 +58,7 @@ const North = ({ history }) => {
    * @param {string} applicationId ID of an application
    * @returns {object} The selected application's config
    */
-  const getApplicationIndex = applicationId => applications.findIndex(application => application.applicationId === applicationId)
+  const getApplicationIndex = (applicationId) => applications.findIndex((application) => application.applicationId === applicationId)
 
   /**
    * Handles the edit of application and redirects the
@@ -51,9 +72,9 @@ const North = ({ history }) => {
 
     if (applicationIndex === -1) return
 
-    const formData = applications[applicationIndex]
-    const link = `/north/${formData.api}`
-    history.push({ pathname: link, formData })
+    const application = applications[applicationIndex]
+    const link = `/north/${application.api}`
+    history.push({ pathname: link, formData: application, subscribeList: dataSourceIds })
   }
 
   /**
@@ -66,9 +87,11 @@ const North = ({ history }) => {
     const applicationIndex = getApplicationIndex(applicationId)
     if (applicationIndex === -1) {
       // Adds new application to table
-      setApplications(prev => [...prev, { applicationId, enabled, api }])
+      setApplications((prev) => [...prev, { applicationId, enabled, api }])
     } else {
-      throw new Error('application already exists')
+      const error = new Error('application already exists')
+      setAlert({ text: error.message, type: 'danger' })
+      throw error
     }
   }
 
@@ -89,6 +112,7 @@ const North = ({ history }) => {
       setApplications(newApplications)
     } catch (error) {
       console.error(error)
+      setAlert({ text: error.message, type: 'danger' })
     }
   }
 
@@ -103,10 +127,11 @@ const North = ({ history }) => {
       await apis.deleteNorth(applicationId)
 
       // Removes the deleted application from table
-      setApplications(prevState => prevState.filter(application => application.applicationId !== applicationId))
+      setApplications((prevState) => prevState.filter((application) => application.applicationId !== applicationId))
       // TODO: Show loader
     } catch (error) {
       console.error(error)
+      setAlert({ text: error.message, type: 'danger' })
     }
   }
 
@@ -117,7 +142,7 @@ const North = ({ history }) => {
       name: 'enabled',
       value: (
         <Modal show={false} title="Change status" body="Are you sure to change this Data Source status ?">
-          {confirm => (
+          {(confirm) => (
             <div>
               <Button className="inline-button" color={enabled ? 'success' : 'danger'} onClick={confirm(() => handleToggleClick(applicationId))}>
                 {enabled ? 'Active' : 'Stopped'}
@@ -131,8 +156,14 @@ const North = ({ history }) => {
     {
       name: 'delete',
       value: (
-        <Modal show={false} title="Delete application" body="Are you sure you want to delete this application?">
-          {confirm => (
+        <Modal
+          show={false}
+          title="Delete application"
+          body="Are you sure you want to delete this application?"
+          acceptLabel="Delete"
+          acceptColor="danger"
+        >
+          {(confirm) => (
             <div>
               <Button className="inline-button" color="primary" onClick={() => handleEditClick(applicationId)}>
                 Edit
@@ -146,12 +177,12 @@ const North = ({ history }) => {
       ),
     },
   ])
+
   return (
-    <>
+    <Col xs="12" md="9">
       {tableRows && <Table headers={tableHeaders} rows={tableRows} onRowClick={() => null} />}
       <NewApplicationRow apiList={apiList} addApplication={addApplication} />
-      <ReactJson src={applications} name={null} collapsed displayObjectSize={false} displayDataTypes={false} enableClipboard={false} />
-    </>
+    </Col>
   )
 }
 North.propTypes = { history: PropTypes.object.isRequired }

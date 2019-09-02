@@ -5,11 +5,11 @@ const ProtocolHandler = require('../ProtocolHandler.class')
 const databaseService = require('../../services/database.service')
 
 /**
- * Class RawFile
+ * Class FolderScanner
  */
-class RawFile extends ProtocolHandler {
+class FolderScanner extends ProtocolHandler {
   /**
-   * Constructor for RawFile
+   * Constructor for FolderScanner
    * @constructor
    * @param {Object} dataSource - The data source
    * @param {Engine} engine - The engine
@@ -28,8 +28,9 @@ class RawFile extends ProtocolHandler {
 
   async connect() {
     if (this.preserveFiles) {
-      const databasePath = `${this.engine.config.engine.caching.cacheFolder}/${this.dataSource.dataSourceId}.db`
-      this.database = await databaseService.createRawFilesDatabase(databasePath)
+      const { engineConfig } = this.engine.configService.getConfig()
+      const databasePath = `${engineConfig.caching.cacheFolder}/${this.dataSource.dataSourceId}.db`
+      this.database = await databaseService.createFolderScannerDatabase(databasePath)
     }
   }
 
@@ -98,7 +99,7 @@ class RawFile extends ProtocolHandler {
 
     await Promise.all(filenames.map(async (filename) => {
       const stats = fs.statSync(path.join(this.inputFolder, filename))
-      const modified = await databaseService.getRawFileModifyTime(this.database, filename)
+      const modified = await databaseService.getFolderScannerModifyTime(this.database, filename)
       if (modified) {
         if ((stats.mtimeMs > modified)) {
           filesToHandle.push(filename)
@@ -138,10 +139,10 @@ class RawFile extends ProtocolHandler {
 
     this.logger.debug(`Upsert handled file ${filename} with modify time ${stats.mtimeMs}`)
 
-    await databaseService.upsertRawFile(this.database, filename, stats.mtimeMs)
+    await databaseService.upsertFolderScanner(this.database, filename, stats.mtimeMs)
   }
 }
 
-RawFile.schema = require('./schema')
+FolderScanner.schema = require('./schema')
 
-module.exports = RawFile
+module.exports = FolderScanner

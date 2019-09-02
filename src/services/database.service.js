@@ -12,9 +12,10 @@ const createValuesDatabase = async (databasePath) => {
   const database = await sqlite.open(databasePath)
   const query = `CREATE TABLE IF NOT EXISTS ${CACHE_TABLE_NAME} (
                    id INTEGER PRIMARY KEY,
-                   timestamp INTEGER,
+                   timestamp TEXT,
                    data TEXT,
-                   point_id TEXT
+                   point_id TEXT,
+                   data_source_id TEXT
                  );`
   const stmt = await database.prepare(query)
   await stmt.run()
@@ -47,7 +48,7 @@ const createFilesDatabase = async (databasePath) => {
  * @param {string} databasePath - The database file path
  * @return {BetterSqlite3.Database} - The SQLite3 database
  */
-const createRawFilesDatabase = async (databasePath) => {
+const createFolderScannerDatabase = async (databasePath) => {
   const database = await sqlite.open(databasePath)
 
   const query = `CREATE TABLE IF NOT EXISTS ${CACHE_TABLE_NAME} (
@@ -81,16 +82,25 @@ const createConfigDatabase = async (databasePath) => {
 }
 
 /**
- * Save value in database.
+ * Save values in database.
  * @param {BetterSqlite3.Database} database - The database to use
- * @param {object} value - The value to save
+ * @param {String} dataSourceId - The data source ID
+ * @param {object} values - The values to save
  * @return {void}
  */
-const saveValue = async (database, value) => {
-  const query = `INSERT INTO ${CACHE_TABLE_NAME} (timestamp, data, point_id) 
-                 VALUES (?, ?, ?)`
-  const stmt = await database.prepare(query)
-  await stmt.run(value.timestamp, encodeURI(value.data), value.pointId)
+const saveValues = async (database, dataSourceId, values) => {
+  const query = `INSERT INTO ${CACHE_TABLE_NAME} (timestamp, data, point_id, data_source_id) 
+                 VALUES (?, ?, ?, ?)`
+  try {
+    await database.run('BEGIN;')
+    const stmt = await database.prepare(query)
+    const actions = values.map((value) => stmt.run(value.timestamp, encodeURI(JSON.stringify(value.data)), value.pointId, dataSourceId))
+    await Promise.all(actions)
+    await database.run('COMMIT;')
+  } catch (error) {
+    console.error(error)
+    throw error
+  }
 }
 
 /**
@@ -98,12 +108,16 @@ const saveValue = async (database, value) => {
  * @param {BetterSqlite3.Database} database - The database to use
  * @return {number} - The values count
  */
-const getValuesCount = async (database) => {
+const getCount = async (database) => {
   const query = `SELECT COUNT(*) AS count
                  FROM ${CACHE_TABLE_NAME}`
-  const stmt = await database.prepare(query)
-  const result = await stmt.get()
-
+  let result = {}
+  try {
+    const stmt = await database.prepare(query)
+    result = await stmt.get()
+  } catch (error) {
+    throw error
+  }
   return result.count
 }
 
@@ -114,18 +128,28 @@ const getValuesCount = async (database) => {
  * @return {array|null} - The values
  */
 const getValuesToSend = async (database, count) => {
-  const query = `SELECT id, timestamp, data, point_id AS pointId 
+  const query = `SELECT id, timestamp, data, point_id AS pointId, data_source_id as dataSourceId
                  FROM ${CACHE_TABLE_NAME}
                  ORDER BY timestamp
                  LIMIT ${count}`
-  const stmt = await database.prepare(query)
-  const results = await stmt.all()
+  let results
+  try {
+    const stmt = await database.prepare(query)
+    results = await stmt.all()
+  } catch (error) {
+    throw error
+  }
 
   let values = null
 
   if (results.length > 0) {
     values = results.map((value) => {
-      value.data = decodeURI(value.data)
+      try {
+        // data is a JSON object containing value and quality
+        value.data = JSON.parse(decodeURI(value.data))
+      } catch (error) {
+        throw error
+      }
       return value
     })
   }
@@ -137,14 +161,20 @@ const getValuesToSend = async (database, count) => {
  * Remove sent values from the cache for a given North application.
  * @param {BetterSqlite3.Database} database - The database to use
  * @param {Object} values - The values to remove
- * @return {void}
+ * @return {number} number of deleted values
  */
 const removeSentValues = async (database, values) => {
-  const ids = values.map(value => value.id).join()
-  const query = `DELETE FROM ${CACHE_TABLE_NAME}
-                 WHERE id IN (${ids})`
-  const stmt = await database.prepare(query)
-  await stmt.run()
+  let stmt = {}
+  try {
+    const ids = values.map((value) => value.id).join()
+    const query = `DELETE FROM ${CACHE_TABLE_NAME}
+                   WHERE id IN (${ids})`
+    stmt = await database.prepare(query)
+    await stmt.run()
+  } catch (error) {
+    throw error
+  }
+  return stmt.changes
 }
 
 /**
@@ -218,7 +248,7 @@ const getFileCount = async (database, filePath) => {
  * @param {number} modified - The modify time
  * @return {void}
  */
-const upsertRawFile = async (database, filename, modified) => {
+const upsertFolderScanner = async (database, filename, modified) => {
   const query = `INSERT INTO ${CACHE_TABLE_NAME} (filename, modified) 
                  VALUES (?, ?)
                  ON CONFLICT(filename) DO UPDATE SET modified = ?`
@@ -232,7 +262,7 @@ const upsertRawFile = async (database, filename, modified) => {
  * @param {string} filename - The filename
  * @return {string|null} - The modify time
  */
-const getRawFileModifyTime = async (database, filename) => {
+const getFolderScannerModifyTime = async (database, filename) => {
   const query = `SELECT modified 
                  FROM ${CACHE_TABLE_NAME}
                  WHERE filename = ?`
@@ -286,6 +316,7 @@ const createLogsDatabase = async (databasePath) => {
   const database = await sqlite.open(databasePath)
 
   const query = `CREATE TABLE IF NOT EXISTS ${LOGS_TABLE_NAME} (
+                  id INTEGER PRIMARY KEY, 
                   timestamp DATE,
                   level TEXT,
                   message TEXT
@@ -301,7 +332,7 @@ const createLogsDatabase = async (databasePath) => {
  * @param {string} databasePath - The database path
  * @param {string} fromDate - From date
  * @param {string} toDate - To date
- * @param {string} verbosity - Verbosity
+ * @param {string[]} verbosity - Verbosity levels
  * @return {object[]} - The logs
  */
 const getLogs = async (databasePath, fromDate, toDate, verbosity) => {
@@ -309,9 +340,9 @@ const getLogs = async (databasePath, fromDate, toDate, verbosity) => {
   const query = `SELECT *
                  FROM logs
                  WHERE timestamp BETWEEN ? AND ?
-                 AND level LIKE ?`
+                 AND level IN (${verbosity.map((_) => '?')})`
   const stmt = await database.prepare(query)
-  return stmt.all(fromDate, toDate, verbosity)
+  return stmt.all([fromDate, toDate, ...verbosity])
 }
 
 const addLog = async (database, timestamp, level, message) => {
@@ -320,24 +351,43 @@ const addLog = async (database, timestamp, level, message) => {
   const stmt = await database.prepare(query)
   await stmt.run(timestamp, level, message)
 }
+
+/**
+ * Delete old logs.
+ * @param {BetterSqlite3.Database} database - The database to use
+ * @param {number} numberOfRecords - The number of records to be deleted
+ * @return {void}
+ */
+const deleteOldLogs = async (database, numberOfRecords) => {
+  const query = `DELETE FROM ${LOGS_TABLE_NAME} 
+                 WHERE id IN (
+                   SELECT id FROM ${LOGS_TABLE_NAME} 
+                   ORDER BY id ASC 
+                   LIMIT ?
+                  )`
+  const stmt = await database.prepare(query)
+  await stmt.run(numberOfRecords)
+}
+
 module.exports = {
   createValuesDatabase,
   createFilesDatabase,
-  createRawFilesDatabase,
+  createFolderScannerDatabase,
   createConfigDatabase,
-  saveValue,
-  getValuesCount,
+  saveValues,
+  getCount,
   getValuesToSend,
   removeSentValues,
   saveFile,
   getFileToSend,
   deleteSentFile,
   getFileCount,
-  upsertRawFile,
-  getRawFileModifyTime,
+  upsertFolderScanner,
+  getFolderScannerModifyTime,
   upsertConfig,
   getConfig,
   createLogsDatabase,
   getLogs,
   addLog,
+  deleteOldLogs,
 }

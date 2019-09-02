@@ -2,112 +2,164 @@ const fs = require('fs')
 const path = require('path')
 
 const databaseService = require('../services/database.service')
+const Queue = require('../services/queue.class')
 
 /**
- * Local cache implementation to group events and store them when the communication with North is down.
+ * Local cache implementation to group events and store them when the communication if North is down.
  */
 class Cache {
   /**
    * Constructor for Cache
+   * The Engine parameters is used for the following parameters
+   * cacheFolder: Value mode only: will contain all sqllite databases used to cache values
+   * archiveMode: File mode only: decide if the file is deleted or archived after being sent to the North.
+   * archiveFolder: in 'archive' mode, specifies where the file is archived.
    * @constructor
    * @param {Engine} engine - The Engine
    * @return {void}
    */
   constructor(engine) {
-    this.engine = engine
     this.logger = engine.logger
-
-    const { cacheFolder, archiveFolder, archiveMode } = engine.config.engine.caching
-
+    this.engine = engine
+    // get parameters for the cache
+    const { engineConfig } = engine.configService.getConfig()
+    const { cacheFolder, archiveFolder, archiveMode } = engineConfig.caching
+    this.archiveMode = archiveMode
     // Create cache folder if not exists
     this.cacheFolder = path.resolve(cacheFolder)
     if (!fs.existsSync(this.cacheFolder)) {
+      this.logger.info(`creating cache folder in ${this.cacheFolder}`)
       fs.mkdirSync(this.cacheFolder, { recursive: true })
     }
-
     // Create archive folder if not exists
     this.archiveFolder = path.resolve(archiveFolder)
     if (!fs.existsSync(this.archiveFolder)) {
+      this.logger.info(`creating archive folder in ${this.archiveFolder}`)
       fs.mkdirSync(this.archiveFolder, { recursive: true })
     }
+    // will contains the list of North apis
+    this.apis = {}
+    // Queuing
+    this.sendInProgress = {}
+    this.resendImmediately = {}
+    // manage a queue for concurrent request to write to SQL
+    this.queue = new Queue(this.logger)
+  }
 
-    this.archiveMode = archiveMode
-
-    this.activeApis = {}
+  /**
+   * Initialize an active North.
+   * @param {Object} activeApi - The North to initialize
+   * @returns {Promise<void>} - The result
+   */
+  async initializeApi(activeApi) {
+    const api = {
+      applicationId: activeApi.application.applicationId,
+      config: activeApi.application.caching,
+      canHandleValues: activeApi.canHandleValues,
+      canHandleFiles: activeApi.canHandleFiles,
+      subscribedTo: activeApi.application.subscribedTo,
+    }
+    // only initialize the db if the api can handle values
+    if (api.canHandleValues) {
+      this.logger.debug(`use db: ${this.cacheFolder}/${api.applicationId}.db`)
+      api.database = await databaseService.createValuesDatabase(`${this.cacheFolder}/${api.applicationId}.db`)
+      this.logger.debug(`db count: ${await databaseService.getCount(api.database)}`)
+    }
+    this.apis[api.applicationId] = api
+    this.resetTimeout(api, api.config.sendInterval)
   }
 
   /**
    * Initialize the cache by creating a database for every North application.
-   * @param {object} applications - The North applications
+   * also initializes an internal object for North applications
+   * @param {object} activeApis - The active North applications
    * @return {void}
    */
-  async initialize(applications) {
+  async initialize(activeApis) {
+    this.logger.debug(`use db: ${this.cacheFolder}/fileCache.db`)
     this.filesDatabase = await databaseService.createFilesDatabase(`${this.cacheFolder}/fileCache.db`)
-
-    Object.values(applications).forEach(async (application) => {
-      if (application.canHandleFiles || application.canHandleValues) {
-        const activeApi = {}
-
-        activeApi.applicationId = application.application.applicationId
-        activeApi.config = application.application.caching
-        activeApi.canHandleValues = application.canHandleValues
-        activeApi.canHandleFiles = application.canHandleFiles
-        activeApi.subscribedTo = application.application.subscribedTo
-
-        if (application.canHandleValues) {
-          activeApi.database = await databaseService.createValuesDatabase(`${this.cacheFolder}/${activeApi.applicationId}.db`)
-        }
-
-        this.resetTimeout(activeApi, activeApi.config.sendInterval)
-
-        this.activeApis[activeApi.applicationId] = activeApi
-      }
-    })
+    this.logger.debug(`db count: ${await databaseService.getCount(this.filesDatabase)}`)
+    // initialize the internal object apis with the list of north apis
+    const actions = Object.values(activeApis).map((activeApi) => this.initializeApi(activeApi))
+    await Promise.all(actions)
   }
 
   /**
    * Check whether a North is subscribed to a South
    * @param {string} dataSourceId - The South generating the value
    * @param {string[]} subscribedTo - The list of Souths the North is subscribed to
-   * @returns {boolean} - The the North is subscribed to the giben South
+   * @returns {boolean} - The North is subscribed to the given South
    */
   static isSubscribed(dataSourceId, subscribedTo) {
-    if (!subscribedTo) {
-      return true
-    }
-
-    return (Array.isArray(subscribedTo) && subscribedTo.includes(dataSourceId))
+    if (!subscribedTo) return true
+    return Array.isArray(subscribedTo) && subscribedTo.includes(dataSourceId)
   }
 
   /**
-   * Cache a new Value.
-   * It will store the value in every database. If doNotCache is "true" it will immediately forward the value
-   * to every North application.
+   * Cache a new Value from the South for a given North
+   * It will store the value in every database.
+   * to every North application (used for alarm values for example)
+   * @param {Object} api - The North to cache the Value for
    * @param {string} dataSourceId - The South generating the value
-   * @param {object} value - The new value
-   * @param {string} value.pointId - The ID of the point
-   * @param {string} value.data - The value of the point
-   * @param {number} value.timestamp - The timestamp
-   * @param {boolean} doNotGroup - Whether to disable grouping
+   * @param {object} values - values
    * @return {void}
    */
-  async cacheValues(dataSourceId, value, doNotGroup) {
-    Object.entries(this.activeApis).forEach(async ([applicationId, activeApi]) => {
-      const { database, config, canHandleValues, subscribedTo } = activeApi
-
-      if (canHandleValues && Cache.isSubscribed(dataSourceId, subscribedTo)) {
-        await databaseService.saveValue(database, value)
-
-        if (doNotGroup) {
-          this.sendValues(applicationId, [value])
-        } else {
-          const count = await databaseService.getValuesCount(database)
-          if (count >= config.groupCount) {
-            this.sendCallback(applicationId)
-          }
-        }
+  async cacheValuesForApi(api, dataSourceId, values) {
+    const { database, config, canHandleValues, subscribedTo } = api
+    // save the value in the North's queue if it is subscribed to the dataSource
+    if (canHandleValues && Cache.isSubscribed(dataSourceId, subscribedTo)) {
+      this.queue.add(databaseService.saveValues, database, dataSourceId, values)
+      // if the group size is over the groupCount => we immediately send the cache
+      // to the North even if the timeout is not finished.
+      const count = await databaseService.getCount(database)
+      if (count >= config.groupCount) {
+        this.logger.silly(`groupCount reached: ${count}>=${config.groupCount}`)
+        return api
       }
-    })
+    }
+    return false
+  }
+
+  /**
+   * Cache a new Value from the South
+   * It will store the value in every database.
+   * to every North application (used for alarm values for example)
+   * @param {string} dataSourceId - The South generating the value
+   * @param {object} values - The new value
+   * @return {void}
+   */
+  async cacheValues(dataSourceId, values) {
+    try {
+      const actions = Object.values(this.apis).map((api) => this.cacheValuesForApi(api, dataSourceId, values))
+      const apisToActivate = await Promise.all(actions)
+      apisToActivate.forEach((apiToActivate) => {
+        if (apiToActivate) {
+          this.sendCallback(apiToActivate)
+        }
+      })
+    } catch (error) {
+      console.error(error)
+      this.logger(error)
+    }
+  }
+
+  /**
+   * Cache the new raw file for a given North.
+   * @param {object} api - The North to cache the file for
+   * @param {string} dataSourceId - The South generating the file
+   * @param {String} cachePath - The path of the raw file
+   * @param {number} timestamp - The timestamp the file was received
+   * @return {void}
+   */
+  async cacheFileForApi(api, dataSourceId, cachePath, timestamp) {
+    const { applicationId, canHandleFiles, subscribedTo } = api
+    if (canHandleFiles && Cache.isSubscribed(dataSourceId, subscribedTo)) {
+      this.logger.silly(`Cache cacheFile() - North handling file: ${applicationId}`)
+      await databaseService.saveFile(this.filesDatabase, timestamp, applicationId, cachePath)
+      this.logger.debug(`send file for ${api.applicationId}`)
+      return api
+    }
+    return false
   }
 
   /**
@@ -118,80 +170,115 @@ class Cache {
    * @return {void}
    */
   async cacheFile(dataSourceId, filePath, preserveFiles) {
+    this.logger.silly(`Cache cacheFile() from ${dataSourceId} with ${filePath}`)
     const timestamp = new Date().getTime()
     const cacheFilename = `${path.parse(filePath).name}-${timestamp}${path.parse(filePath).ext}`
     const cachePath = path.join(this.cacheFolder, cacheFilename)
 
-    if (preserveFiles) {
-      fs.copyFile(filePath, cachePath, (copyError) => {
-        if (copyError) {
-          this.logger.error(copyError)
-        } else {
-          Object.entries(this.activeApis).forEach(async ([applicationId, activeApi]) => {
-            const { canHandleFiles, subscribedTo } = activeApi
+    try {
+      if (preserveFiles) {
+        this.logger.silly(`Cache cacheFile() - preserveFiles set so copy to ${cachePath}`)
+        fs.copyFile(filePath, cachePath, (copyError) => {
+          if (copyError) throw copyError
+        })
+      } else {
+        this.logger.silly(`Cache cacheFile() - preserveFiles not set so rename to ${cachePath}`)
+        fs.rename(filePath, cachePath, (renameError) => {
+          if (renameError) {
+            // In case of cross-device link error we copy+delete instead
+            if (renameError.code !== 'EXDEV') throw renameError
+            this.logger.debug('Cross-device link error during rename, copy+paste instead')
+            fs.copyFile(filePath, cachePath, (copyError) => {
+              if (copyError) throw copyError
+              fs.unlink(filePath, (unlinkError) => {
+                // log error but does not throw so we try sending the file to S3
+                if (unlinkError) this.logger.error(unlinkError)
+              })
+            })
+          }
+        })
+      }
 
-            if (canHandleFiles && Cache.isSubscribed(dataSourceId, subscribedTo)) {
-              await databaseService.saveFile(this.filesDatabase, timestamp, applicationId, cachePath)
-              this.sendCallback(applicationId)
-            }
-          })
+      // Cache the file for every subscribed North
+      const actions = Object.values(this.apis).map((api) => this.cacheFileForApi(api, dataSourceId, cachePath, timestamp))
+      const apisToActivate = await Promise.all(actions)
+      // Activate sending
+      apisToActivate.forEach((apiToActivate) => {
+        if (apiToActivate) {
+          this.sendCallback(apiToActivate)
         }
       })
-    } else {
-      fs.rename(filePath, cachePath, (renameError) => {
-        if (renameError) {
-          this.logger.error(renameError)
-        } else {
-          Object.entries(this.activeApis).forEach(async ([applicationId, activeApi]) => {
-            const { canHandleFiles, subscribedTo } = activeApi
-
-            if (canHandleFiles && Cache.isSubscribed(dataSourceId, subscribedTo)) {
-              await databaseService.saveFile(this.filesDatabase, timestamp, applicationId, cachePath)
-              this.sendCallback(applicationId)
-            }
-          })
-        }
-      })
+    } catch (error) {
+      this.logger.error(error)
     }
   }
 
   /**
    * Callback function used by the timer to send the values to the given North application.
-   * @param {string} applicationId - The application ID
+   * @param {object} api - The application
    * @return {void}
    */
-  sendCallback(applicationId) {
-    const application = this.activeApis[applicationId]
+  async sendCallback(api) {
+    const { applicationId, canHandleValues, canHandleFiles } = api
 
-    if (application.canHandleValues) {
-      this.handleValues(application)
-    }
+    this.logger.silly(`sendCallback ${applicationId} with sendInProgress ${this.sendInProgress[applicationId]}`)
 
-    if (application.canHandleFiles) {
-      this.handleFiles(application)
+    if (!this.sendInProgress[applicationId]) {
+      this.sendInProgress[applicationId] = true
+      this.resendImmediately[applicationId] = false
+
+      if (canHandleValues) {
+        await this.sendCallbackForValues(api)
+      }
+
+      if (canHandleFiles) {
+        await this.sendCallbackForFiles(api)
+      }
+
+      this.sendInProgress[applicationId] = false
+    } else {
+      this.resendImmediately[applicationId] = true
     }
   }
 
   /**
-   * Handle value resending.
+   * handle the values for the callback
    * @param {object} application - The application to send the values to
    * @return {void}
    */
-  async handleValues(application) {
+  async sendCallbackForValues(application) {
+    this.logger.silly(`Cache sendCallbackForValues() for ${application.applicationId}`)
     let success = true
+    const { applicationId, database, config } = application
 
     try {
-      const values = await databaseService.getValuesToSend(application.database, application.config.groupCount)
+      const values = await databaseService.getValuesToSend(database, config.maxSendCount)
 
       if (values) {
-        success = await this.sendValues(application.applicationId, values)
+        this.logger.silly(
+          `Cache sendCallbackForValues() got ${values.length} values to send for ${application.applicationId}`,
+        )
+        success = await this.engine.handleValuesFromCache(applicationId, values)
+        this.logger.silly(
+          `Cache sendCallbackForValues() got ${success} result from engine.handleValuesFromCache() for ${
+            application.applicationId
+          }`,
+        )
+        if (success) {
+          const removed = await databaseService.removeSentValues(database, values)
+          this.logger.silly(
+            `Cache sendCallbackForValues() removed ${removed} values from the ${application.applicationId} database`,
+          )
+          if (removed !== values.length) this.logger.debug(`Cache for ${applicationId} can't be deleted: ${removed}/${values.length}`)
+        }
       }
     } catch (error) {
       this.logger.error(error)
       success = false
     }
 
-    const timeout = success ? application.config.sendInterval : application.config.retryInterval
+    const successTimeout = this.resendImmediately[applicationId] ? 0 : config.sendInterval
+    const timeout = success ? successTimeout : config.retryInterval
     this.resetTimeout(application, timeout)
   }
 
@@ -200,51 +287,39 @@ class Cache {
    * @param {object} application - The application to send the values to
    * @return {void}
    */
-  async handleFiles(application) {
-    let timeout = application.config.sendInterval
+  async sendCallbackForFiles(application) {
+    this.logger.silly(`Cache sendCallbackForFiles() for ${application.applicationId}`)
+
+    const { applicationId, config } = application
+    let success = true
 
     try {
-      const filePath = await databaseService.getFileToSend(this.filesDatabase, application.applicationId)
+      const filePath = await databaseService.getFileToSend(this.filesDatabase, applicationId)
+      this.logger.silly(`Cache sendCallbackForFiles() fileToSend ${filePath}`)
 
       if (filePath) {
-        timeout = 1000
-
         if (fs.existsSync(filePath)) {
-          const success = await this.engine.sendFile(application.applicationId, filePath)
+          this.logger.silly(`Cache sendCallbackForFiles() call Engine sendFile() ${applicationId} and ${filePath}`)
+          success = await this.engine.sendFile(applicationId, filePath)
 
           if (success) {
-            await databaseService.deleteSentFile(this.filesDatabase, application.applicationId, filePath)
+            this.logger.silly(`Cache sendCallbackForFiles() deleteSentFile for ${applicationId} and ${filePath}`)
+            await databaseService.deleteSentFile(this.filesDatabase, applicationId, filePath)
             await this.handleSentFile(filePath)
-          } else {
-            timeout = application.config.retryInterval
           }
         } else {
           this.logger.error(new Error(`File ${filePath} doesn't exist. Removing it from database.`))
 
-          await databaseService.deleteSentFile(this.filesDatabase, application.applicationId, filePath)
+          await databaseService.deleteSentFile(this.filesDatabase, applicationId, filePath)
         }
       }
     } catch (error) {
       this.logger.error(error)
     }
 
+    const successTimeout = this.resendImmediately[applicationId] ? 0 : config.sendInterval
+    const timeout = success ? successTimeout : config.retryInterval
     this.resetTimeout(application, timeout)
-  }
-
-  /**
-   * Send values to a given North application.
-   * @param {string} applicationId - The application ID
-   * @param {object[]} values - The values to send
-   * @return {void}
-   */
-  async sendValues(applicationId, values) {
-    const success = await this.engine.sendValues(applicationId, values)
-
-    if (success) {
-      await databaseService.removeSentValues(this.activeApis[applicationId].database, values)
-    }
-
-    return success
   }
 
   /**
@@ -253,6 +328,7 @@ class Cache {
    * @return {void}
    */
   async handleSentFile(filePath) {
+    this.logger.silly(`Cache handleSentFile() for ${filePath}`)
     const count = await databaseService.getFileCount(this.filesDatabase, filePath)
     if (count === 0) {
       const archivedFilename = path.basename(filePath)
@@ -285,6 +361,7 @@ class Cache {
           })
           break
         default:
+          this.logger.error(`unknown Archive Mode: ${this.archiveMode}`)
       }
     }
   }
@@ -299,10 +376,7 @@ class Cache {
     if (application.timeout) {
       clearTimeout(application.timeout)
     }
-    application.timeout = setTimeout(
-      this.sendCallback.bind(this, application.applicationId),
-      timeout,
-    )
+    application.timeout = setTimeout(this.sendCallback.bind(this, application), timeout)
   }
 }
 

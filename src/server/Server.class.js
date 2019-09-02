@@ -7,6 +7,7 @@ const respond = require('koa-respond')
 const json = require('koa-json')
 
 const authCrypto = require('./middlewares/auth') // ./auth
+const ipFilter = require('./middlewares/ipFilter')
 
 const router = require('./routes')
 
@@ -26,7 +27,8 @@ class Server {
     this.app.engine = engine
     this.app.logger = engine.logger
     // Get the config entries
-    const { debug = false, user, password, port, filter = ['127.0.0.1', '::1'] } = engine.config.engine
+    const { engineConfig } = engine.configService.getConfig()
+    const { debug = false, user, password, port, filter = ['127.0.0.1', '::1'] } = engineConfig
 
     this.logger = engine.logger
     this.debug = debug
@@ -45,16 +47,8 @@ class Server {
     // It provides important security headers to make your app more secure by default.
     this.app.use(helmet())
 
-    // filter IP adresses
-    this.app.use(async (ctx, next) => {
-      const { ip } = ctx.request
-      if (filter.includes(ip)) {
-        await next()
-      } else {
-        this.logger.error(new Error(`${ip} is not authorized`))
-        ctx.throw(401, 'access denied ', `${ip} is not authorized`)
-      }
-    })
+    // filter IP addresses
+    this.app.use(ipFilter(filter))
 
     // custom 401 handling
     this.app.use(async (ctx, next) => {
@@ -64,7 +58,8 @@ class Server {
         if (err.status === 401) {
           ctx.status = 401
           ctx.set('WWW-Authenticate', 'Basic')
-          ctx.body = 'access was not authorized'
+          console.error(err)
+          ctx.body = JSON.stringify(err)
         } else {
           throw err
         }
@@ -83,7 +78,7 @@ class Server {
     // A body parser for koa, base on co-body. support json, form and text type body.
     this.app.use(
       bodyParser({
-        enableTypes: ['json'],
+        enableTypes: ['json', 'text'],
         jsonLimit: '5mb',
         strict: true,
         onerror(err, ctx) {

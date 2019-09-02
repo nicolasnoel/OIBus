@@ -1,34 +1,17 @@
 import React from 'react'
 import { withRouter } from 'react-router-dom'
 import PropTypes from 'prop-types'
-import ReactJson from 'react-json-view'
-import { Button } from 'reactstrap'
+import { Button, Col } from 'reactstrap'
 import Table from './components/table/Table.jsx'
 import NewDataSourceRow from './NewDataSourceRow.jsx'
 import Modal from './components/Modal.jsx'
 import apis from './services/apis'
+import { AlertContext } from './context/AlertContext'
 
 const South = ({ history }) => {
   const [dataSources, setDataSources] = React.useState([])
   const [protocolList, setProtocolList] = React.useState([])
-  const [configEngine, setConfigEngine] = React.useState()
-
-  /**
-   * Acquire the engine configuration and set the configEngine JSON
-   * @returns {void}
-   */
-  React.useEffect(() => {
-    // eslint-disable-next-line consistent-return
-    fetch('/config').then((response) => {
-      const contentType = response.headers.get('content-type')
-      if (contentType && contentType.indexOf('application/json') !== -1) {
-        return response.json().then(({ config }) => {
-          const { engine } = config
-          setConfigEngine(engine)
-        })
-      }
-    })
-  }, [])
+  const { setAlert } = React.useContext(AlertContext)
 
   /**
    * Acquire the South configuration
@@ -37,6 +20,9 @@ const South = ({ history }) => {
   React.useEffect(() => {
     apis.getConfig().then(({ config }) => {
       setDataSources(config.south.dataSources)
+    }).catch((error) => {
+      console.error(error)
+      setAlert({ text: error.message, type: 'danger' })
     })
   }, [])
 
@@ -47,6 +33,9 @@ const South = ({ history }) => {
   React.useEffect(() => {
     apis.getSouthProtocols().then((protocols) => {
       setProtocolList(protocols)
+    }).catch((error) => {
+      console.error(error)
+      setAlert({ text: error.message, type: 'danger' })
     })
   }, [])
 
@@ -55,7 +44,7 @@ const South = ({ history }) => {
    * @param {string} dataSourceId ID of a data source
    * @returns {object} The selected data source's config
    */
-  const getDataSourceIndex = dataSourceId => dataSources.findIndex(dataSource => dataSource.dataSourceId === dataSourceId)
+  const getDataSourceIndex = (dataSourceId) => dataSources.findIndex((dataSource) => dataSource.dataSourceId === dataSourceId)
 
   /**
    * Adds a new data source row to the table
@@ -66,10 +55,24 @@ const South = ({ history }) => {
   const addDataSource = ({ dataSourceId, enabled, protocol }) => {
     const dataSourceIndex = getDataSourceIndex(dataSourceId)
     if (dataSourceIndex === -1) {
-      setDataSources(prev => [...prev, { dataSourceId, enabled, protocol }])
+      setDataSources((prev) => [...prev, { dataSourceId, enabled, protocol }])
     } else {
       throw new Error('dataSourceId already exists')
     }
+  }
+
+  /**
+   * Handles the edit of points and redirects the
+   * user to the selected south data source's points page
+   * @param {string} dataSourceId The id to edit
+   * @return {void}
+   */
+  const handleEditPoints = (dataSourceId) => {
+    const dataSourceIndex = getDataSourceIndex(dataSourceId)
+    if (dataSourceIndex === -1) return
+    const dataSource = dataSources[dataSourceIndex]
+    const link = `/south/${dataSource.protocol}/${dataSource.dataSourceId}/points`
+    history.push({ pathname: link })
   }
 
   /**
@@ -81,9 +84,9 @@ const South = ({ history }) => {
   const handleEditClick = (dataSourceId) => {
     const dataSourceIndex = getDataSourceIndex(dataSourceId)
     if (dataSourceIndex === -1) return
-    const formData = dataSources[dataSourceIndex]
-    const link = `/south/${formData.protocol}`
-    history.push({ pathname: link, formData, configEngine })
+    const dataSource = dataSources[dataSourceIndex]
+    const link = `/south/${dataSource.protocol}`
+    history.push({ pathname: link, formData: dataSource })
   }
 
   /**
@@ -103,6 +106,7 @@ const South = ({ history }) => {
       setDataSources(newDataSources)
     } catch (error) {
       console.error(error)
+      setAlert({ text: error.message, type: 'danger' })
     }
   }
 
@@ -117,21 +121,22 @@ const South = ({ history }) => {
     try {
       await apis.deleteSouth(dataSourceId)
       // Remove the deleted data source from the table
-      setDataSources(prevState => prevState.filter(dataSource => dataSource.dataSourceId !== dataSourceId))
+      setDataSources((prevState) => prevState.filter((dataSource) => dataSource.dataSourceId !== dataSourceId))
       // TODO: Show loader
     } catch (error) {
       console.error(error)
+      setAlert({ text: error.message, type: 'danger' })
     }
   }
 
-  const tableHeaders = ['Data Source ID', 'Status', 'Protocol', '']
-  const tableRows = dataSources.map(({ dataSourceId, enabled, protocol }) => [
+  const tableHeaders = ['Data Source ID', 'Status', 'Protocol', 'Points', '']
+  const tableRows = dataSources.map(({ dataSourceId, enabled, protocol, points }) => [
     { name: 'id', value: dataSourceId },
     {
       name: 'enabled',
       value: (
         <Modal show={false} title="Change status" body="Are you sure to change this Data Source status ?">
-          {confirm => (
+          {(confirm) => (
             <div>
               <Button className="inline-button" color={enabled ? 'success' : 'danger'} onClick={confirm(() => handleToggleClick(dataSourceId))}>
                 {enabled ? 'Active' : 'Stopped'}
@@ -143,10 +148,30 @@ const South = ({ history }) => {
     },
     { name: 'protocol', value: protocol },
     {
+      name: 'points',
+      value: (
+        <div>
+          <Button
+            className="inline-button autosize"
+            color={points && points.length ? 'success' : 'primary'}
+            onClick={() => handleEditPoints(dataSourceId)}
+          >
+            {`Points ${points ? `(${points.length})` : '(0)'}`}
+          </Button>
+        </div>
+      ),
+    },
+    {
       name: 'delete',
       value: (
-        <Modal show={false} title="Delete Data Source" body="Are you sure you want to delete this Data Source?">
-          {confirm => (
+        <Modal
+          show={false}
+          title="Delete Data Source"
+          body="Are you sure you want to delete this Data Source?"
+          acceptLabel="Delete"
+          acceptColor="danger"
+        >
+          {(confirm) => (
             <div>
               <Button className="inline-button" color="primary" onClick={() => handleEditClick(dataSourceId)}>
                 Edit
@@ -161,13 +186,10 @@ const South = ({ history }) => {
     },
   ])
   return (
-    <>
-      <Modal show={false} title="Delete Data Source" body="Are you sure you want to delete this Data Source?">
-        {confirm => tableRows && <Table headers={tableHeaders} rows={tableRows} onRowClick={() => null} onDeleteClick={confirm(handleDelete)} />}
-      </Modal>
+    <Col xs="12" md="9">
+      <Table headers={tableHeaders} rows={tableRows} onRowClick={() => null} />
       <NewDataSourceRow protocolList={protocolList} addDataSource={addDataSource} />
-      <ReactJson src={dataSources} name={null} collapsed displayObjectSize={false} displayDataTypes={false} enableClipboard={false} />
-    </>
+    </Col>
   )
 }
 
