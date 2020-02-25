@@ -18,7 +18,7 @@ class FolderScanner extends ProtocolHandler {
   constructor(dataSource, engine) {
     super(dataSource, engine)
 
-    const { inputFolder, preserveFiles, minAge, regex } = this.dataSource
+    const { inputFolder, preserveFiles, minAge, regex } = this.dataSource.FolderScanner
 
     this.inputFolder = path.resolve(inputFolder)
     this.preserveFiles = preserveFiles
@@ -27,6 +27,7 @@ class FolderScanner extends ProtocolHandler {
   }
 
   async connect() {
+    super.connect()
     if (this.preserveFiles) {
       const { engineConfig } = this.engine.configService.getConfig()
       const databasePath = `${engineConfig.caching.cacheFolder}/${this.dataSource.dataSourceId}.db`
@@ -36,10 +37,11 @@ class FolderScanner extends ProtocolHandler {
 
   /**
    * Read the raw file and rewrite it to another file in the folder archive
-   * @param {*} _scanMode - The scan mode
+   * @param {*} scanMode - The scan mode
    * @return {void}
    */
-  onScan(_scanMode) {
+  onScan(scanMode) {
+    this.logger.silly(`FolderScanner activated on scanMode: ${scanMode}.`)
     // Check if input folder exists
     if (!fs.existsSync(this.inputFolder)) {
       this.logger.warn(`The input folder ${this.inputFolder} doesn't exist.`)
@@ -82,10 +84,10 @@ class FolderScanner extends ProtocolHandler {
     if (this.regex.test(filename)) {
       const timestamp = new Date().getTime()
       const stats = fs.statSync(path.join(this.inputFolder, filename))
-
+      this.logger.silly(`checkFile ts:${timestamp} mT:${stats.mtimeMs} mA ${this.minAge}`)
       matched = (stats.mtimeMs < (timestamp - this.minAge))
     }
-
+    this.logger.silly(`checkFile ${filename} matched ${matched}`)
     return matched
   }
 
@@ -142,7 +144,5 @@ class FolderScanner extends ProtocolHandler {
     await databaseService.upsertFolderScanner(this.database, filename, stats.mtimeMs)
   }
 }
-
-FolderScanner.schema = require('./schema')
 
 module.exports = FolderScanner

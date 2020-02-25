@@ -1,7 +1,10 @@
 const sqlite = require('sqlite')
 
+const Logger = require('../engine/Logger.class')
+
+const logger = new Logger('database')
+
 const CACHE_TABLE_NAME = 'cache'
-const LOGS_TABLE_NAME = 'logs'
 
 /**
  * Initiate SQLite3 database and create the cache table.
@@ -98,7 +101,7 @@ const saveValues = async (database, dataSourceId, values) => {
     await Promise.all(actions)
     await database.run('COMMIT;')
   } catch (error) {
-    console.error(error)
+    logger.error(error)
     throw error
   }
 }
@@ -116,6 +119,7 @@ const getCount = async (database) => {
     const stmt = await database.prepare(query)
     result = await stmt.get()
   } catch (error) {
+    logger.error(error)
     throw error
   }
   return result.count
@@ -137,6 +141,7 @@ const getValuesToSend = async (database, count) => {
     const stmt = await database.prepare(query)
     results = await stmt.all()
   } catch (error) {
+    logger.error(error)
     throw error
   }
 
@@ -148,7 +153,8 @@ const getValuesToSend = async (database, count) => {
         // data is a JSON object containing value and quality
         value.data = JSON.parse(decodeURI(value.data))
       } catch (error) {
-        throw error
+        // log error but try to continue with value unchanged
+        logger.error(new Error(` ${error.message} detected for value.data ${JSON.stringify(value)}`))
       }
       return value
     })
@@ -172,6 +178,7 @@ const removeSentValues = async (database, values) => {
     stmt = await database.prepare(query)
     await stmt.run()
   } catch (error) {
+    logger.error(error)
     throw error
   }
   return stmt.changes
@@ -324,26 +331,6 @@ const getConfig = async (database, name) => {
 }
 
 /**
- * Initiate SQLite3 database and create the logs table.
- * @param {string} databasePath - The database file path
- * @return {BetterSqlite3.Database} - The SQLite3 database
- */
-const createLogsDatabase = async (databasePath) => {
-  const database = await sqlite.open(databasePath)
-
-  const query = `CREATE TABLE IF NOT EXISTS ${LOGS_TABLE_NAME} (
-                  id INTEGER PRIMARY KEY, 
-                  timestamp DATE,
-                  level TEXT,
-                  message TEXT
-                );`
-  const stmt = await database.prepare(query)
-  await stmt.run()
-
-  return database
-}
-
-/**
  * Get logs.
  * @param {string} databasePath - The database path
  * @param {string} fromDate - From date
@@ -359,30 +346,6 @@ const getLogs = async (databasePath, fromDate, toDate, verbosity) => {
                  AND level IN (${verbosity.map((_) => '?')})`
   const stmt = await database.prepare(query)
   return stmt.all([fromDate, toDate, ...verbosity])
-}
-
-const addLog = async (database, timestamp, level, message) => {
-  const query = `INSERT INTO ${LOGS_TABLE_NAME} (timestamp, level, message) 
-                 VALUES (?, ?, ?)`
-  const stmt = await database.prepare(query)
-  await stmt.run(timestamp, level, message)
-}
-
-/**
- * Delete old logs.
- * @param {BetterSqlite3.Database} database - The database to use
- * @param {number} numberOfRecords - The number of records to be deleted
- * @return {void}
- */
-const deleteOldLogs = async (database, numberOfRecords) => {
-  const query = `DELETE FROM ${LOGS_TABLE_NAME} 
-                 WHERE id IN (
-                   SELECT id FROM ${LOGS_TABLE_NAME} 
-                   ORDER BY id ASC 
-                   LIMIT ?
-                  )`
-  const stmt = await database.prepare(query)
-  await stmt.run(numberOfRecords)
 }
 
 module.exports = {
@@ -403,8 +366,5 @@ module.exports = {
   getFolderScannerModifyTime,
   upsertConfig,
   getConfig,
-  createLogsDatabase,
   getLogs,
-  addLog,
-  deleteOldLogs,
 }

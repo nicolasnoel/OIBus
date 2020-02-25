@@ -3,6 +3,7 @@ const { spawn } = require('child_process')
 const ProtocolHandler = require('../ProtocolHandler.class')
 const TcpServer = require('./TcpServer')
 const databaseService = require('../../services/database.service')
+const Logger = require('../../engine/Logger.class')
 
 /**
  * Class OPCHDA.
@@ -18,6 +19,8 @@ class OPCHDA extends ProtocolHandler {
   constructor(dataSource, engine) {
     super(dataSource, engine)
 
+    this.agentLogger = new Logger('OIBusOPCHDA')
+
     this.tcpServer = null
     this.transactionId = 0
     this.agentConnected = false
@@ -27,7 +30,7 @@ class OPCHDA extends ProtocolHandler {
     this.receivedLog = ''
     this.reconnectTimeout = null
 
-    this.scanGroups = this.dataSource.scanGroups.map((scanGroup) => {
+    this.scanGroups = this.dataSource.OPCHDA.scanGroups.map((scanGroup) => {
       const points = this.dataSource.points
         .filter((point) => point.scanMode === scanGroup.scanMode)
         .map((point) => point.pointId)
@@ -47,6 +50,7 @@ class OPCHDA extends ProtocolHandler {
    */
   async connect() {
     if (process.platform === 'win32') {
+      super.connect()
       // Initialize lastCompletedAt for every scanGroup
       const { dataSourceId, startTime } = this.dataSource
       const { engineConfig } = this.engine.configService.getConfig()
@@ -62,8 +66,8 @@ class OPCHDA extends ProtocolHandler {
       })
 
       // Launch Agent
-      const { agentFilename, tcpPort, logLevel } = this.dataSource
-      this.tcpServer = new TcpServer(tcpPort, this.logger, this.handleMessage.bind(this))
+      const { agentFilename, tcpPort, logLevel } = this.dataSource.OPCHDA
+      this.tcpServer = new TcpServer(tcpPort, this.handleMessage.bind(this), this.logger)
       this.tcpServer.start(() => {
         this.launchAgent(agentFilename, tcpPort, logLevel)
       })
@@ -109,7 +113,7 @@ class OPCHDA extends ProtocolHandler {
     })
 
     this.child.stderr.on('data', (data) => {
-      this.logger.error(`HDA stderr: ${data}`)
+      this.agentLogger.error(`HDA stderr: ${data}`)
     })
 
     this.child.on('close', (code) => {
@@ -117,7 +121,7 @@ class OPCHDA extends ProtocolHandler {
     })
 
     this.child.on('error', (error) => {
-      this.logger.error(`Failed to start HDA agent: ${path}`, error)
+      this.logger.error(`Failed to start HDA agent: ${error.message}`)
     })
   }
 
@@ -150,30 +154,31 @@ class OPCHDA extends ProtocolHandler {
     })
   }
 
+  /* eslint-disable-next-line class-methods-use-this */
   logMessage(log) {
     try {
       const parsedLog = JSON.parse(log)
       const message = `Agent stdout: ${parsedLog.Message}`
       switch (parsedLog.Level) {
         case 'error':
-          this.logger.error(message)
+          this.agentLogger.error(message)
           break
         case 'info':
-          this.logger.info(message)
+          this.agentLogger.info(message)
           break
         case 'debug':
-          this.logger.debug(message)
+          this.agentLogger.debug(message)
           break
         case 'silly':
-          this.logger.silly(message)
+          this.agentLogger.silly(message)
           break
         default:
-          this.logger.debug(message)
+          this.agentLogger.debug(message)
           break
       }
     } catch (error) {
       this.logger.error(error)
-      this.logger.debug(`Agent stdout error: ${log}`)
+      this.agentLogger.debug(`Agent stdout error: ${log}`)
     }
   }
 
@@ -184,7 +189,7 @@ class OPCHDA extends ProtocolHandler {
 
   sendConnectMessage() {
     this.reconnectTimeout = null
-    const { host, serverName } = this.dataSource
+    const { host, serverName } = this.dataSource.OPCHDA
     const message = {
       Request: 'Connect',
       TransactionId: this.generateTransactionId(),
@@ -197,10 +202,15 @@ class OPCHDA extends ProtocolHandler {
   }
 
   sendInitializeMessage() {
+    const { maxReturnValues, maxReadInterval } = this.dataSource.OPCHDA
     const message = {
       Request: 'Initialize',
       TransactionId: this.generateTransactionId(),
-      Content: { Groups: this.scanGroups },
+      Content: {
+        Groups: this.scanGroups,
+        MaxReturnValues: maxReturnValues,
+        MaxReadInterval: maxReadInterval,
+      },
     }
     this.sendMessage(message)
   }
@@ -217,7 +227,7 @@ class OPCHDA extends ProtocolHandler {
       }
       this.sendMessage(message)
     } else {
-      this.logger.silly(`sendReadMessage not processed, agent ready: ${this.agentReady}`)
+      this.logger.silly(`sendReadMessage(${scanMode}) skipped, agent ready: ${this.agentReady}/ongoing ${this.ongoingReads[scanMode]}`)
     }
   }
 
@@ -239,9 +249,7 @@ class OPCHDA extends ProtocolHandler {
       this.logger.debug(`Sent at ${new Date().toISOString()}: ${messageString}`)
       this.tcpServer.sendMessage(messageString)
     } else {
-      this.logger.debug(
-        `send message not processed, TCP server: ${this.tcpServer}, agent connected: ${this.agentConnected}`,
-      )
+      this.logger.debug(`sendMessage ignored, TCP server: ${this.tcpServer}, agent connected: ${this.agentConnected}`)
     }
   }
 
@@ -258,6 +266,7 @@ class OPCHDA extends ProtocolHandler {
 
       const messageObject = JSON.parse(message)
       let dateString
+      const { host, serverName, retryInterval } = this.dataSource.OPCHDA
 
       switch (messageObject.Reply) {
         case 'Alive':
@@ -265,21 +274,17 @@ class OPCHDA extends ProtocolHandler {
           this.sendConnectMessage()
           break
         case 'Connect':
-          this.logger.debug(`Agent connected to OPC HDA server: ${messageObject.Content.Connected}`)
+          this.logger.info(`HDAAgent connected: ${messageObject.Content.Connected}`)
           if (messageObject.Content.Connected) {
             this.sendInitializeMessage()
           } else {
-            this.logger.error(
-              `Unable to connect to ${this.dataSource.serverName} on ${this.dataSource.host}: ${
-                messageObject.Content.Error
-              }`,
-            )
-            this.reconnectTimeout = setTimeout(this.sendConnectMessage.bind(this), this.dataSource.retryInterval)
+            this.logger.error(`Unable to connect to ${serverName} on ${host}: ${messageObject.Content.Error}, retrying in ${retryInterval}ms`)
+            this.reconnectTimeout = setTimeout(this.sendConnectMessage.bind(this), retryInterval)
           }
           break
         case 'Initialize':
           this.agentReady = true
-          this.logger.debug('received Initialize message')
+          this.logger.info(`HDAAgent initialized: ${this.agentReady}`)
           break
         case 'Read':
           if (messageObject.Content.Error) {
@@ -342,7 +347,5 @@ class OPCHDA extends ProtocolHandler {
     }
   }
 }
-
-OPCHDA.schema = require('./schema')
 
 module.exports = OPCHDA

@@ -1,5 +1,15 @@
 /* OI Styles */
 
+.custom-control-input:checked~.custom-control-label::before {
+  border-color: #f5bb51;
+  background-color: #f5bb51;
+}
+button:focus,
+input:focus,
+a:focus {
+   outline:0 !important;
+}
+
 .oi-container {
   margin-top: 35px;
   padding: 0;
@@ -8,7 +18,7 @@
   font-size: 11px;
 }
 .oi-container-with-top-nav {
-  margin-top: 72px;
+  margin-top: 52px;
   background-color: #ffffff;
   border: 0;
   font-size: 11px;
@@ -68,6 +78,18 @@
   color: #000000;
 }
 
+.oi-navname {
+  padding-top: 10px;
+  padding-bottom: 5px;
+  padding-left: 8px;
+  padding-right: 8px;
+  line-height: 20px;
+  text-decoration: none;
+  color: #ffffff;
+  position: absolute;
+  right: 0;
+}
+
 .oi-navicon {
   margin-top: 3px;
   margin-right: 10px;
@@ -115,6 +137,13 @@
   border-color: #f5bb51;
 }
 
+.btn:disabled {
+  opacity: 0.2;
+  color: #fff;
+  background-color: #8291a7;
+  border-color: #8291a7;
+}
+
 .btn-outline-dark,
 .btn-add {
   color: #fff;
@@ -153,16 +182,15 @@ td > div > .autosize {
   width: auto;
 }
 
+tr {
+  vertical-align: middle;
+}
+
 label {
   display: inline-block;
   margin-bottom: 0.2rem;
   font-weight: bold;
   font-size: 0.7rem;
-}
-
-.copyright-label {
-  color: white;
-  padding: 0 20px;
 }
 
 .label-card-title {
@@ -186,15 +214,6 @@ label {
   width: 39px;
   text-align: center;
   padding: 0.5rem 0;
-}
-
-.table thead th {
-  vertical-align: middle;
-}
-
-.table td,
-.table th {
-  vertical-align: middle;
 }
 
 .form-check-input {
@@ -228,78 +247,113 @@ label {
   align-items: center;
 }
 
-/*!
- * Bootstrap v4.3.1 (https://getBootstrap.com/)
- * Copyright 2011-2019 The Bootstrap Authors
- * Copyright 2011-2019 Twitter, Inc.
- * Licensed under MIT (https://github.com/twbs/bootstrap/blob/master/LICENSE)
-*/
-/* added spinner css part from bootstrap v4*/
-@-webkit-keyframes spinner-border {
-  to {
-    -webkit-transform: rotate(360deg);
-    transform: rotate(360deg);
-  }
+.oi-help {
+  margin-bottom: 5px;
+  margin-left: 6px;
+  width: 12px;
 }
 
-@keyframes spinner-border {
-  to {
-    -webkit-transform: rotate(360deg);
-    transform: rotate(360deg);
-  }
+.oi-icon {
+  width: 10px;
+  margin-right: 2px;
+  margin-bottom: 0px;
+  color: #627187;
 }
 
-.spinner-border {
-  display: inline-block;
-  width: 2rem;
-  height: 2rem;
-  vertical-align: text-bottom;
-  border: 0.25em solid currentColor;
-  border-right-color: transparent;
-  border-radius: 50%;
-  -webkit-animation: spinner-border 0.75s linear infinite;
-  animation: spinner-border 0.75s linear infinite;
+.oi-icon-inline {
+  vertical-align: top;
+  margin-left: 5px;
 }
 
-.spinner-border-sm {
-  width: 1rem;
-  height: 1rem;
-  border-width: 0.2em;
+.oi-log td{
+  padding: 1px;
 }
 
-@-webkit-keyframes spinner-grow {
-  0% {
-    -webkit-transform: scale(0);
-    transform: scale(0);
-  }
-  50% {
-    opacity: 1;
-  }
+.oi-icon:hover,.oi-help:hover{
+  text-decoration: none;
+  color: #F5BB51;
+  cursor: pointer;
 }
 
-@keyframes spinner-grow {
-  0% {
-    -webkit-transform: scale(0);
-    transform: scale(0);
-  }
-  50% {
-    opacity: 1;
-  }
+.oi-form-input {
+  font-size: 11px;
+  padding: 0 6px;
+  margin-top: 2px;
+  margin-bottom: 7px;
+  height: 20px;
+  width: 100%;
+  overflow: hidden;
 }
 
-.spinner-grow {
-  display: inline-block;
-  width: 2rem;
-  height: 2rem;
-  vertical-align: text-bottom;
-  background-color: currentColor;
-  border-radius: 50%;
-  opacity: 0;
-  -webkit-animation: spinner-grow 0.75s linear infinite;
-  animation: spinner-grow 0.75s linear infinite;
+.oi-form-append {
+  padding: 0 5px 0 5px;
+  margin: 2px 0 0px 5px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #dedede;
+  border: 1px solid lightgray;
+  border-radius: 2px;
 }
 
-.spinner-grow-sm {
-  width: 1rem;
-  height: 1rem;
+h3 {
+  font-size: 24px;
+}
+
+.oi-add-button {
+  margin-top: 20px;
+  height: 20px;
+}
+
+.oi-points-button {
+  height: 16px;
+  padding-top: 1px;
+  margin-top: 3px;
+}
+
+.oi-points-button:disabled {
+ opacity: 0.5;
+}
+
+
+.breadcrumb {
+  background-color: inherit;
+  color: #F5BB51;
+  margin: 0px;
+  padding: 0px;
+}
+
+.breadcrumb > a {
+  color:inherit;
+}
+
+.breadcrumb:hover > a {
+  color: #f5bb51;
+}
+
+.oi-box {
+  border: 1px solid;
+  border-radius: 5px 5px 5px 5px;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  vertical-align: middle;
+  white-space: nowrap;
+  min-height: 50px;
+  line-height: 15px;
+  margin-top: 3px;
+  margin-bottom: 3px;
+  padding-bottom: 10px;
+  padding-top: 10px;
+  padding-right: 5px;
+  padding-left: 5px;
+}
+
+.oi-box > a {
+  color: inherit;
+}
+
+.tight {
+  padding-right: 5px;
+  padding-left: 5px;
 }

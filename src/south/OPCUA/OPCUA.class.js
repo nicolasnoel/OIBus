@@ -7,7 +7,7 @@ const getOptimizedConfig = require('./config/getOptimizedConfig')
  * The point is from the optimized config hence the scannedDataSource parameter
  * @param {Object} pointId - The point ID
  * @param {Array} types - The types
- * @param {Logger} logger - The logger
+ * @param {Object} logger - The logger
  * @return {*} The fields
  */
 const fieldsFromPointId = (pointId, types, logger) => {
@@ -45,10 +45,11 @@ class OPCUA extends ProtocolHandler {
     // as OPCUA can group multiple points in a single request
     // we group points based on scanMode
     this.optimizedConfig = getOptimizedConfig(dataSource)
+    const { host, opcuaPort, endPoint, maxAge } = dataSource.OPCUA
     // define OPCUA connection parameters
     this.client = new Opcua.OPCUAClient({ endpoint_must_exist: false })
-    this.url = `opc.tcp://${dataSource.host}:${dataSource.opcuaPort}/${dataSource.endPoint}`
-    this.maxAge = dataSource.maxAge || 10
+    this.url = `opc.tcp://${host}:${opcuaPort}/${endPoint}`
+    this.maxAge = maxAge || 10
   }
 
   /**
@@ -56,6 +57,7 @@ class OPCUA extends ProtocolHandler {
    * @return {Promise<void>} The connection promise
    */
   async connect() {
+    super.connect()
     await this.client.connect(
       this.url,
       (connectError) => {
@@ -138,7 +140,5 @@ class OPCUA extends ProtocolHandler {
     }
   }
 }
-
-OPCUA.schema = require('./schema')
 
 module.exports = OPCUA

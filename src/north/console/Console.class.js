@@ -1,3 +1,4 @@
+const fs = require('fs')
 const ApiHandler = require('../ApiHandler.class')
 
 class Console extends ApiHandler {
@@ -11,6 +12,8 @@ class Console extends ApiHandler {
   constructor(applicationParameters, engine) {
     super(applicationParameters, engine)
     this.canHandleValues = true
+    this.canHandleFiles = true
+    this.verbose = applicationParameters.Console.verbose || false
   }
 
   /**
@@ -18,13 +21,31 @@ class Console extends ApiHandler {
    * @param {object[]} values - The values
    * @return {Promise} - The handle status
    */
-  /* eslint-disable-next-line class-methods-use-this */
   async handleValues(values) {
-    console.table(values, ['pointId', 'timestamp', 'data'])
+    if (this.verbose) {
+      console.table(values, ['pointId', 'timestamp', 'data'])
+    } else {
+      process.stdout.write(`(${values.length})`)
+    }
+    return true
+  }
+
+  /**
+   * Handle the file.
+   * @param {String} filePath - The path of the file
+   * @return {Promise} - The send status
+   */
+  /* eslint-disable-next-line class-methods-use-this */
+  async handleFile(filePath) {
+    const stats = fs.statSync(filePath)
+    const fileSize = stats.size
+    const data = [{
+      filePath,
+      fileSize,
+    }]
+    console.table(data)
     return true
   }
 }
-
-Console.schema = require('./schema')
 
 module.exports = Console

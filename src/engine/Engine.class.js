@@ -1,7 +1,11 @@
 const timexe = require('timexe')
 const path = require('path')
+const os = require('os')
+
+const moment = require('moment-timezone')
 
 const encryptionService = require('../services/encryption.service')
+const requestService = require('../services/request.service')
 const VERSION = require('../../package.json').version
 
 // South classes
@@ -21,14 +25,14 @@ apiList.InfluxDB = require('../north/influxdb/InfluxDB.class')
 apiList.TimescaleDB = require('../north/timescaledb/TimescaleDB.class')
 apiList.OIAnalyticsFile = require('../north/oianalyticsfile/OIAnalyticsFile.class')
 apiList.AmazonS3 = require('../north/amazon/AmazonS3.class')
-apiList.AliveSignal = require('../north/alivesignal/AliveSignal.class')
 apiList.OIConnect = require('../north/oiconnect/OIConnect.class')
 
 // Engine classes
 const Server = require('../server/Server.class')
-const Logger = require('./Logger.class')
 const Cache = require('./Cache.class')
 const ConfigService = require('../services/config.service.class')
+const Logger = require('./Logger.class')
+const AliveSignal = require('./AliveSignal.class')
 
 /**
  *
@@ -42,17 +46,17 @@ class Engine {
    * Makes the necessary changes to the pointId attributes.
    * Checks for critical entries such as scanModes and data sources.
    * @constructor
+   * @param {string} configFile - The config file
    */
-  constructor() {
+  constructor(configFile) {
     this.version = VERSION
 
-    this.configService = new ConfigService(this)
+    this.configService = new ConfigService(this, configFile)
     const { engineConfig, southConfig } = this.configService.getConfig()
 
-    // Configure and get the logger
-    this.logger = new Logger(engineConfig.logParameters)
-
-    this.configService.setLogger(this.logger)
+    // Configure the logger
+    this.logger = new Logger(this.constructor.name)
+    this.logger.changeParameters(engineConfig.logParameters)
 
     // Configure the Cache
     this.cache = new Cache(this)
@@ -65,7 +69,7 @@ class Engine {
     Config file: ${this.configService.configFile}
     Cache folder: ${path.resolve(engineConfig.caching.cacheFolder)}`)
     // Check for private key
-    encryptionService.checkOrCreatePrivateKey(this.configService.keyFolder, this.logger)
+    encryptionService.checkOrCreatePrivateKey(this.configService.keyFolder)
 
     // prepare config
     // Associate the scanMode to all corresponding data sources
@@ -89,19 +93,17 @@ class Engine {
             // add the source for this scan only if not already there
             this.scanLists[dataSource.scanMode].push(dataSource.dataSourceId)
           }
-        } else if (dataSource.points) {
+        } else if (Array.isArray(dataSource.points) && dataSource.points.length > 0) {
           dataSource.points.forEach((point) => {
             if (!this.scanLists[point.scanMode]) {
-              this.logger.error(
-                ` point: ${point.pointId} in dataSource: ${dataSource.dataSourceId} has a unknown scan mode: ${
-                  point.scanMode
-                }`,
-              )
+              this.logger.error(`point: ${point.pointId} in dataSource: ${dataSource.dataSourceId} has a unknown scan mode: ${point.scanMode}`)
             } else if (!this.scanLists[point.scanMode].includes(dataSource.dataSourceId)) {
               // add the source for this scan only if not already there
               this.scanLists[point.scanMode].push(dataSource.dataSourceId)
             }
           })
+        } else {
+          this.logger.error(` dataSource: ${dataSource.dataSourceId} has no scan mode defined`)
         }
       }
     })
@@ -111,6 +113,11 @@ class Engine {
     this.activeProtocols = {}
     this.activeApis = {}
     this.jobs = []
+
+    this.memoryStats = {}
+
+    // AliveSignal
+    this.aliveSignal = new AliveSignal(this)
   }
 
   /**
@@ -225,7 +232,11 @@ class Engine {
         const job = timexe(cronTime, () => {
           // on each scan, activate each protocols
           this.scanLists[scanMode].forEach((dataSourceId) => {
-            this.activeProtocols[dataSourceId].onScan(scanMode)
+            try {
+              this.activeProtocols[dataSourceId].onScan(scanMode)
+            } catch (error) {
+              this.logger.error(`scan for ${dataSourceId} failed: ${error}`)
+            }
           })
         })
         if (job.result !== 'ok') {
@@ -235,6 +246,10 @@ class Engine {
         }
       }
     })
+
+    // 6. Start AliveSignal
+    this.aliveSignal.start()
+
     this.logger.info('OIBus started')
   }
 
@@ -243,6 +258,9 @@ class Engine {
    * @return {void}
    */
   async stop() {
+    // Stop AliveSignal
+    this.aliveSignal.stop()
+
     // Stop timers
     this.jobs.forEach((id) => {
       timexe.remove(id)
@@ -284,17 +302,18 @@ class Engine {
   /**
    * Decrypt password.
    * @param {string} password - The password to decrypt
-   * @return {string} - The decrypted password
+   * @return {string|null} - The decrypted password
    */
   decryptPassword(password) {
-    return encryptionService.decryptText(password, this.configService.keyFolder, this.logger)
+    return encryptionService.decryptText(password, this.configService.keyFolder)
   }
 
   /**
    * Return available North applications
    * @return {String[]} - Available North applications
    */
-  getNorthSchemaList() {
+  /* eslint-disable-next-line class-methods-use-this */
+  getNorthList() {
     this.logger.debug('Getting North applications')
     return Object.keys(apiList)
   }
@@ -303,39 +322,10 @@ class Engine {
    * Return available South protocols
    * @return {String[]} - Available South protocols
    */
-  getSouthSchemaList() {
+  /* eslint-disable-next-line class-methods-use-this */
+  getSouthList() {
     this.logger.debug('Getting South protocols')
     return Object.keys(protocolList)
-  }
-
-  /**
-   * Get schema definition for the given api
-   * @param {String} api - The api to get the schema for
-   * @return {Object} - The api schema
-   */
-  getNorthSchema(api) {
-    if (Object.keys(apiList).includes(api)) {
-      this.logger.debug(`Getting schema for North application ${api}`)
-
-      return apiList[api].schema
-    }
-
-    return null
-  }
-
-  /**
-   * Get schema definition for the given protocol
-   * @param {String} protocol - The protocol to get the schema for
-   * @return {Object} - The protocol schema
-   */
-  getSouthSchema(protocol) {
-    if (Object.keys(protocolList).includes(protocol)) {
-      this.logger.debug(`Getting schema for South protocol ${protocol}`)
-
-      return protocolList[protocol].schema
-    }
-
-    return null
   }
 
   /**
@@ -352,6 +342,83 @@ class Engine {
    */
   getActiveProtocols() {
     return Object.keys(this.activeProtocols)
+  }
+
+  /**
+   * Get memory usage information.
+   * @returns {object} - The memory usage information
+   */
+  getMemoryUsage() {
+    const memoryUsage = process.memoryUsage()
+    // ask the Master Cluster to also log memory usage
+    process.send({ type: 'logMemoryUsage', memoryUsage })
+    Object.entries(memoryUsage).forEach(([key, value]) => {
+      if (!Object.keys(this.memoryStats).includes(key)) {
+        this.memoryStats[key] = {
+          min: value,
+          current: value,
+          max: value,
+        }
+      } else {
+        this.memoryStats[key].min = (value < this.memoryStats[key].min) ? value : this.memoryStats[key].min
+        this.memoryStats[key].current = value
+        this.memoryStats[key].max = (value > this.memoryStats[key].max) ? value : this.memoryStats[key].max
+      }
+    })
+
+    return Object.keys(this.memoryStats).reduce((result, key) => {
+      const min = Number(this.memoryStats[key].min / 1024 / 1024).toFixed(2)
+      const current = Number(this.memoryStats[key].current / 1024 / 1024).toFixed(2)
+      const max = Number(this.memoryStats[key].max / 1024 / 1024).toFixed(2)
+      result[key] = `${min}/${current}/${max} MB`
+      return result
+    }, {})
+  }
+
+  /**
+   * Get status information.
+   * @returns {object} - The status information
+   */
+  async getStatus() {
+    const apisCacheStats = await this.cache.getCacheStatsForApis()
+    const protocolsCacheStats = await this.cache.getCacheStatsForProtocols()
+    const memoryUsage = this.getMemoryUsage()
+
+    const freeMemory = Number(os.freemem() / 1024 / 1024).toFixed(2)
+    const totalMemory = Number(os.totalmem() / 1024 / 1024).toFixed(2)
+    const percentMemory = Number((freeMemory / totalMemory) * 100).toFixed(2)
+
+    return {
+      version: this.getVersion(),
+      architecture: process.arch,
+      currentDirectory: process.cwd(),
+      nodeVersion: process.version,
+      executable: process.execPath,
+      configurationFile: this.configService.getConfigurationFileLocation(),
+      memory: `${freeMemory}/${totalMemory}/${percentMemory} MB/%`,
+      ...memoryUsage,
+      processId: process.pid,
+      uptime: moment.duration(process.uptime(), 'seconds').humanize(),
+      hostname: os.hostname(),
+      osRelease: os.release(),
+      osType: os.type(),
+      apisCacheStats,
+      protocolsCacheStats,
+      copyright: '(c) Copyright 2019 Optimistik, all rights reserved.',
+    }
+  }
+
+  /**
+   * Send HTTP request.
+   * @param {string} requestUrl - The URL to send the request to
+   * @param {string} method - The request type
+   * @param {object} authentication - Authentication info
+   * @param {object} proxy - Proxy to use
+   * @param {object | string} body - The body to send
+   * @returns {Promise} - The send status
+   */
+  async sendRequest(requestUrl, method, authentication, proxy, body) {
+    return requestService.sendRequest(this, requestUrl, method, authentication, proxy, body)
   }
 }
 

@@ -1,4 +1,4 @@
-const path = require('path')
+const Logger = require('../engine/Logger.class')
 
 class ApiHandler {
   /**
@@ -28,11 +28,13 @@ class ApiHandler {
     this.canHandleValues = false
     this.canHandleFiles = false
 
+    this.logger = new Logger(this.constructor.name)
+
     this.application = applicationParameters
     this.engine = engine
-    this.logger = this.engine.logger
-    this.config = this.engine.config
     this.scanModes = this.engine.scanModes
+    const { engineConfig } = this.engine.configService.getConfig()
+    this.engineConfig = engineConfig
   }
 
   /**
@@ -61,8 +63,9 @@ class ApiHandler {
    * @param {object[]} values - The values to handle
    * @return {Promise} - The handle status
    */
+  /* eslint-disable-next-line class-methods-use-this */
   async handleValues(values) {
-    this.logger.warning('handleValues should be surcharged', values)
+    this.logger.warn(`handleValues should be surcharged ${values}`)
     return true
   }
 
@@ -71,8 +74,9 @@ class ApiHandler {
    * @param {string} filePath - The path of the raw file
    * @return {Promise} - The handle status
    */
+  /* eslint-disable-next-line class-methods-use-this */
   async handleFile(filePath) {
-    this.logger.warning('handleFile should be surcharged', filePath)
+    this.logger.warn(`handleFile should be surcharged ${filePath}`)
     return true
   }
 
@@ -85,7 +89,7 @@ class ApiHandler {
     let proxy = null
 
     if (proxyName) {
-      proxy = this.config.engine.proxies.find(({ name }) => name === proxyName)
+      proxy = this.engineConfig.proxies.find(({ name }) => name === proxyName)
     }
 
     return proxy
@@ -97,18 +101,11 @@ class ApiHandler {
    * @returns {string} - The decrypted password
    */
   decryptPassword(password) {
-    return this.engine.decryptPassword(password)
-  }
-
-  /**
-   * Get filename without timestamp from file path.
-   * @param {string} filePath - The file path
-   * @returns {string} - The filename
-   */
-  static getFilenameWithoutTimestamp(filePath) {
-    const { name, ext } = path.parse(filePath)
-    const filename = name.substr(0, name.lastIndexOf('-'))
-    return `${filename}${ext}`
+    const decryptedPassword = this.engine.decryptPassword(password)
+    if (decryptedPassword == null) {
+      this.logger.error(`Error decrypting password for ${this.constructor.name}`)
+    }
+    return decryptedPassword || ''
   }
 }
 

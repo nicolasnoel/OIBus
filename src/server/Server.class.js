@@ -1,5 +1,4 @@
 const Koa = require('koa')
-const logger = require('koa-logger')
 const cors = require('@koa/cors')
 const bodyParser = require('koa-bodyparser')
 const helmet = require('koa-helmet')
@@ -8,6 +7,8 @@ const json = require('koa-json')
 
 const authCrypto = require('./middlewares/auth') // ./auth
 const ipFilter = require('./middlewares/ipFilter')
+const clientController = require('./controllers/clientController')
+const Logger = require('../engine/Logger.class')
 
 const router = require('./routes')
 
@@ -25,22 +26,22 @@ class Server {
     this.app = new Koa()
     // capture the engine and logger under app for reuse in routes.
     this.app.engine = engine
-    this.app.logger = engine.logger
+    this.app.logger = new Logger('server')
+
     // Get the config entries
     const { engineConfig } = engine.configService.getConfig()
-    const { debug = false, user, password, port, filter = ['127.0.0.1', '::1'] } = engineConfig
+    const { user, password, port, filter = ['127.0.0.1', '::1'] } = engineConfig
 
-    this.logger = engine.logger
-    this.debug = debug
     this.port = port
     this.user = user
-    this.password = password
 
-    // Development style logging middleware
-    // Recommended that you .use() this middleware near the top
-    //  to "wrap" all subsequent middleware.
-    if (this.debug === 'debug') {
-      this.app.use(logger())
+    if (password) {
+      this.password = engine.decryptPassword(password)
+      if (this.password == null) {
+        this.app.logger.error('Error decrypting admin password. Falling back to default')
+      }
+    } else {
+      this.password = null
     }
 
     // koa-helmet is a wrapper for helmet to work with koa.
@@ -58,7 +59,7 @@ class Server {
         if (err.status === 401) {
           ctx.status = 401
           ctx.set('WWW-Authenticate', 'Basic')
-          console.error(err)
+          this.app.logger.error(err)
           ctx.body = JSON.stringify(err)
         } else {
           throw err
@@ -96,10 +97,11 @@ class Server {
     // Define routes
     this.app.use(router.routes())
     this.app.use(router.allowedMethods())
+    this.app.use(clientController.serveClient)
   }
 
   listen() {
-    this.app.listen(this.port, () => this.logger.info(`Server started on ${this.port}`))
+    this.app.listen(this.port, () => this.app.logger.info(`Server started on ${this.port}`))
   }
 }
 

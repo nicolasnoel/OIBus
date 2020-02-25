@@ -2,13 +2,16 @@ const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
 
+const Logger = require('../engine/Logger.class')
+
+const logger = new Logger('encryption')
+
 /**
  * Check if private/public keys exist and create them if not.
  * @param {string} keyFolder - The folder to store the keys
- * @param {Logger} logger - logger
  * @returns {void}
  */
-const checkOrCreatePrivateKey = (keyFolder, logger) => {
+const checkOrCreatePrivateKey = (keyFolder) => {
   const privateKeyPath = path.join(keyFolder, 'private.pem')
   const publicKeyPath = path.join(keyFolder, 'public.pem')
 
@@ -59,10 +62,9 @@ const encryptText = (text, keyFolder) => {
  * Decrypt text.
  * @param {string} text - The text to decrypt
  * @param {string} keyFolder - The folder where the keys are stored
- * @param {Logger} logger - The logger
- * @return {string} - The decrypted text
+ * @return {string|null} - The decrypted text
  */
-const decryptText = (text, keyFolder, logger) => {
+const decryptText = (text, keyFolder) => {
   try {
     const absolutePath = path.resolve(path.join(keyFolder, 'private.pem'))
     const privateKey = fs.readFileSync(absolutePath, 'utf8')
@@ -77,7 +79,7 @@ const decryptText = (text, keyFolder, logger) => {
     return decrypted.toString('utf8')
   } catch (error) {
     logger.error(`Error in decryption: ${error.message}`)
-    return ''
+    return null
   }
 }
 
@@ -88,14 +90,19 @@ const decryptText = (text, keyFolder, logger) => {
  * @returns {void}
  */
 const encryptSecrets = (configEntry, keyFolder) => {
-  if (configEntry) {
-    Object.entries(configEntry).forEach(([key, value]) => {
-      if (typeof value === 'object') {
-        encryptSecrets(value, keyFolder)
-      } else if (['password', 'secretKey'].includes(key)) {
-        configEntry[key] = encryptText(value, keyFolder)
-      }
-    })
+  try {
+    if (configEntry) {
+      Object.entries(configEntry).forEach(([key, value]) => {
+        if (typeof value === 'object') {
+          encryptSecrets(value, keyFolder)
+        } else if (['password', 'secretKey'].includes(key) && value.startsWith('{{notEncrypted}}')) {
+          configEntry[key] = encryptText(value.replace('{{notEncrypted}}', ''), keyFolder)
+        }
+      })
+    }
+  } catch (error) {
+    logger.error(new Error(`Error in encryption: ${error.message}`))
+    throw (error)
   }
 }
 
@@ -103,16 +110,15 @@ const encryptSecrets = (configEntry, keyFolder) => {
  * Recursively iterate through an object tree and decrypt sensitive fields.
  * @param {object} configEntry - The object to iterate through
  * @param {string} keyFolder - The folder where the keys are stored
- * @param {Logger} logger - The logger
  * @returns {void}
  */
-const decryptSecrets = (configEntry, keyFolder, logger) => {
+const decryptSecrets = (configEntry, keyFolder) => {
   if (configEntry) {
     Object.entries(configEntry).forEach(([key, value]) => {
       if (typeof value === 'object') {
-        decryptSecrets(value, keyFolder, logger)
+        decryptSecrets(value, keyFolder)
       } else if (['password', 'secretKey'].includes(key)) {
-        configEntry[key] = decryptText(value, keyFolder, logger)
+        configEntry[key] = decryptText(value, keyFolder)
       }
     })
   }

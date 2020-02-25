@@ -3,6 +3,7 @@ const path = require('path')
 
 const databaseService = require('../services/database.service')
 const Queue = require('../services/queue.class')
+const Logger = require('./Logger.class')
 
 /**
  * Local cache implementation to group events and store them when the communication if North is down.
@@ -19,8 +20,8 @@ class Cache {
    * @return {void}
    */
   constructor(engine) {
-    this.logger = engine.logger
     this.engine = engine
+    this.logger = new Logger('Cache')
     // get parameters for the cache
     const { engineConfig } = engine.configService.getConfig()
     const { cacheFolder, archiveFolder, archiveMode } = engineConfig.caching
@@ -43,7 +44,7 @@ class Cache {
     this.sendInProgress = {}
     this.resendImmediately = {}
     // manage a queue for concurrent request to write to SQL
-    this.queue = new Queue(this.logger)
+    this.queue = new Queue()
     // Cache stats
     this.cacheStats = {}
   }
@@ -68,7 +69,11 @@ class Cache {
       this.logger.debug(`db count: ${await databaseService.getCount(api.database)}`)
     }
     this.apis[api.applicationId] = api
-    this.resetTimeout(api, api.config.sendInterval)
+    if (api && api.config && api.config.sendInterval) {
+      this.resetTimeout(api, api.config.sendInterval)
+    } else {
+      this.logger.warning(`api: ${api.applicationId} has no sendInterval - OK if AliveSignal`)
+    }
   }
 
   /**
@@ -87,14 +92,15 @@ class Cache {
   }
 
   /**
-   * Check whether a North is subscribed to a South
+   * Check whether a North is subscribed to a South. if subscribedTo is not defined
+   * or an empty array, the subscription is true.
    * @param {string} dataSourceId - The South generating the value
    * @param {string[]} subscribedTo - The list of Souths the North is subscribed to
    * @returns {boolean} - The North is subscribed to the given South
    */
   static isSubscribed(dataSourceId, subscribedTo) {
-    if (!subscribedTo) return true
-    return Array.isArray(subscribedTo) && subscribedTo.includes(dataSourceId)
+    if (!Array.isArray(subscribedTo) || subscribedTo.length === 0) return true
+    return subscribedTo.includes(dataSourceId)
   }
 
   /**
@@ -104,7 +110,7 @@ class Cache {
    * @param {Object} api - The North to cache the Value for
    * @param {string} dataSourceId - The South generating the value
    * @param {object} values - values
-   * @return {void}
+   * @return {object} the api object or null if api should do nothing.
    */
   async cacheValuesForApi(api, dataSourceId, values) {
     const { applicationId, database, config, canHandleValues, subscribedTo } = api
@@ -124,7 +130,7 @@ class Cache {
         return api
       }
     }
-    return false
+    return null
   }
 
   /**
@@ -149,8 +155,7 @@ class Cache {
         }
       })
     } catch (error) {
-      console.error(error)
-      this.logger(error)
+      this.logger.error(error)
     }
   }
 
@@ -160,7 +165,7 @@ class Cache {
    * @param {string} dataSourceId - The South generating the file
    * @param {String} cachePath - The path of the raw file
    * @param {number} timestamp - The timestamp the file was received
-   * @return {void}
+   * @return {object} the api object or null if api should do nothing.
    */
   async cacheFileForApi(api, dataSourceId, cachePath, timestamp) {
     const { applicationId, canHandleFiles, subscribedTo } = api
@@ -169,12 +174,11 @@ class Cache {
       this.cacheStats[applicationId] = (this.cacheStats[applicationId] || 0) + 1
 
       // Cache file
-      this.logger.silly(`Cache cacheFile() - North handling file: ${applicationId}`)
+      this.logger.debug(`cacheFileForApi() ${cachePath} for api: ${applicationId}`)
       await databaseService.saveFile(this.filesDatabase, timestamp, applicationId, cachePath)
-      this.logger.debug(`send file for ${api.applicationId}`)
       return api
     }
-    return false
+    return null
   }
 
   /**
@@ -189,34 +193,14 @@ class Cache {
     this.cacheStats[dataSourceId] = (this.cacheStats[dataSourceId] || 0) + 1
 
     // Cache files
-    this.logger.silly(`Cache cacheFile() from ${dataSourceId} with ${filePath}`)
+    this.logger.debug(`cacheFile() from ${dataSourceId} with ${filePath}, preserveFiles:${preserveFiles}`)
     const timestamp = new Date().getTime()
     const cacheFilename = `${path.parse(filePath).name}-${timestamp}${path.parse(filePath).ext}`
     const cachePath = path.join(this.cacheFolder, cacheFilename)
 
     try {
-      if (preserveFiles) {
-        this.logger.silly(`Cache cacheFile() - preserveFiles set so copy to ${cachePath}`)
-        fs.copyFile(filePath, cachePath, (copyError) => {
-          if (copyError) throw copyError
-        })
-      } else {
-        this.logger.silly(`Cache cacheFile() - preserveFiles not set so rename to ${cachePath}`)
-        fs.rename(filePath, cachePath, (renameError) => {
-          if (renameError) {
-            // In case of cross-device link error we copy+delete instead
-            if (renameError.code !== 'EXDEV') throw renameError
-            this.logger.debug('Cross-device link error during rename, copy+paste instead')
-            fs.copyFile(filePath, cachePath, (copyError) => {
-              if (copyError) throw copyError
-              fs.unlink(filePath, (unlinkError) => {
-                // log error but does not throw so we try sending the file to S3
-                if (unlinkError) this.logger.error(unlinkError)
-              })
-            })
-          }
-        })
-      }
+      // Move or copy the file into the cache folder
+      await this.transferFile(filePath, cachePath, preserveFiles)
 
       // Cache the file for every subscribed North
       const actions = Object.values(this.apis).map((api) => this.cacheFileForApi(api, dataSourceId, cachePath, timestamp))
@@ -233,26 +217,74 @@ class Cache {
   }
 
   /**
+   * Transfer the file into the cache folder.
+   *
+   * @param {string} filePath - The file path
+   * @param {string} cachePath - The cache path
+   * @param {boolean} preserveFiles - Whether to preserve the file
+   * @returns {Promise<*>} - The result promise
+   */
+  transferFile(filePath, cachePath, preserveFiles) {
+    return new Promise((resolve, reject) => {
+      try {
+        if (preserveFiles) {
+          this.logger.silly(`transferFile() - preserveFiles true so copy to ${cachePath}`)
+          fs.copyFile(filePath, cachePath, (copyError) => {
+            if (copyError) throw copyError
+            resolve()
+          })
+        } else {
+          this.logger.silly(`transferFile() -  preserveFiles false so rename to ${cachePath}`)
+          fs.rename(filePath, cachePath, (renameError) => {
+            if (renameError) {
+              // In case of cross-device link error we copy+delete instead
+              if (renameError.code !== 'EXDEV') throw renameError
+              this.logger.debug('Cross-device link error during rename, copy+paste instead')
+              fs.copyFile(filePath, cachePath, (copyError) => {
+                if (copyError) throw copyError
+                fs.unlink(filePath, (unlinkError) => {
+                  // log error but does not throw so we try sending the file to S3
+                  if (unlinkError) this.logger.error(unlinkError)
+                })
+                resolve()
+              })
+            } else {
+              resolve()
+            }
+          })
+        }
+      } catch (error) {
+        reject(error)
+      }
+    })
+  }
+
+  /**
    * Callback function used by the timer to send the values to the given North application.
    * @param {object} api - The application
    * @return {void}
    */
   async sendCallback(api) {
-    const { applicationId, canHandleValues, canHandleFiles } = api
+    const { applicationId, canHandleValues, canHandleFiles, config } = api
+    let success = true
 
-    this.logger.silly(`sendCallback ${applicationId} with sendInProgress ${this.sendInProgress[applicationId]}`)
+    this.logger.silly(`sendCallback ${applicationId} with sendInProgress ${!!this.sendInProgress[applicationId]}`)
 
     if (!this.sendInProgress[applicationId]) {
       this.sendInProgress[applicationId] = true
       this.resendImmediately[applicationId] = false
 
       if (canHandleValues) {
-        await this.sendCallbackForValues(api)
+        success = await this.sendCallbackForValues(api)
       }
 
       if (canHandleFiles) {
-        await this.sendCallbackForFiles(api)
+        success = await this.sendCallbackForFiles(api)
       }
+
+      const successTimeout = this.resendImmediately[applicationId] ? 0 : config.sendInterval
+      const timeout = success ? successTimeout : config.retryInterval
+      this.resetTimeout(api, timeout)
 
       this.sendInProgress[applicationId] = false
     } else {
@@ -267,38 +299,28 @@ class Cache {
    */
   async sendCallbackForValues(application) {
     this.logger.silly(`Cache sendCallbackForValues() for ${application.applicationId}`)
-    let success = true
     const { applicationId, database, config } = application
 
     try {
       const values = await databaseService.getValuesToSend(database, config.maxSendCount)
 
       if (values) {
-        this.logger.silly(
-          `Cache sendCallbackForValues() got ${values.length} values to send for ${application.applicationId}`,
-        )
-        success = await this.engine.handleValuesFromCache(applicationId, values)
-        this.logger.silly(
-          `Cache sendCallbackForValues() got ${success} result from engine.handleValuesFromCache() for ${
-            application.applicationId
-          }`,
-        )
+        this.logger.silly(`Cache:sendCallbackForValues() got ${values.length} values to send to ${application.applicationId}`)
+        const success = await this.engine.handleValuesFromCache(applicationId, values)
+        this.logger.silly(`Cache:handleValuesFromCache, success: ${success} AppId: ${application.applicationId}`)
         if (success) {
           const removed = await databaseService.removeSentValues(database, values)
-          this.logger.silly(
-            `Cache sendCallbackForValues() removed ${removed} values from the ${application.applicationId} database`,
-          )
-          if (removed !== values.length) this.logger.debug(`Cache for ${applicationId} can't be deleted: ${removed}/${values.length}`)
+          this.logger.silly(`Cache:removeSentValues, removed: ${removed} AppId: ${application.applicationId}`)
+          if (removed !== values.length) {
+            this.logger.debug(`Cache for ${applicationId} can't be deleted: ${removed}/${values.length}`)
+          }
         }
       }
     } catch (error) {
       this.logger.error(error)
-      success = false
+      return false
     }
-
-    const successTimeout = this.resendImmediately[applicationId] ? 0 : config.sendInterval
-    const timeout = success ? successTimeout : config.retryInterval
-    this.resetTimeout(application, timeout)
+    return true
   }
 
   /**
@@ -307,38 +329,36 @@ class Cache {
    * @return {void}
    */
   async sendCallbackForFiles(application) {
-    this.logger.silly(`Cache sendCallbackForFiles() for ${application.applicationId}`)
-
-    const { applicationId, config } = application
-    let success = true
+    const { applicationId } = application
+    this.logger.silly(`Cache sendCallbackForFiles() for ${applicationId}`)
 
     try {
       const filePath = await databaseService.getFileToSend(this.filesDatabase, applicationId)
-      this.logger.silly(`Cache sendCallbackForFiles() fileToSend ${filePath}`)
+      this.logger.silly(`sendCallbackForFiles() filePath:${filePath}`)
 
-      if (filePath) {
-        if (fs.existsSync(filePath)) {
-          this.logger.silly(`Cache sendCallbackForFiles() call Engine sendFile() ${applicationId} and ${filePath}`)
-          success = await this.engine.sendFile(applicationId, filePath)
-
-          if (success) {
-            this.logger.silly(`Cache sendCallbackForFiles() deleteSentFile for ${applicationId} and ${filePath}`)
-            await databaseService.deleteSentFile(this.filesDatabase, applicationId, filePath)
-            await this.handleSentFile(filePath)
-          }
-        } else {
-          this.logger.error(new Error(`File ${filePath} doesn't exist. Removing it from database.`))
-
-          await databaseService.deleteSentFile(this.filesDatabase, applicationId, filePath)
-        }
+      if (filePath === null) {
+        this.logger.silly('sendCallbackForFiles(): no file to send')
+        return true
       }
+
+      if (!fs.existsSync(filePath)) {
+        // file in cache does not exist on filesystem
+        await databaseService.deleteSentFile(this.filesDatabase, applicationId, filePath)
+        this.logger.error(new Error(`File ${filePath} doesn't exist. Removing it from database.`))
+        return false
+      }
+      this.logger.silly(`sendCallbackForFiles() call Engine sendFile() ${applicationId} and ${filePath}`)
+      const success = await this.engine.sendFile(applicationId, filePath)
+      if (success) {
+        this.logger.silly(`sendCallbackForFiles() deleteSentFile for ${applicationId} and ${filePath}`)
+        await databaseService.deleteSentFile(this.filesDatabase, applicationId, filePath)
+        await this.handleSentFile(filePath)
+      }
+      return success
     } catch (error) {
       this.logger.error(error)
+      return false
     }
-
-    const successTimeout = this.resendImmediately[applicationId] ? 0 : config.sendInterval
-    const timeout = success ? successTimeout : config.retryInterval
-    this.resetTimeout(application, timeout)
   }
 
   /**
@@ -347,7 +367,7 @@ class Cache {
    * @return {void}
    */
   async handleSentFile(filePath) {
-    this.logger.silly(`Cache handleSentFile() for ${filePath}`)
+    this.logger.silly(`handleSentFile() for ${filePath}`)
     const count = await databaseService.getFileCount(this.filesDatabase, filePath)
     if (count === 0) {
       const archivedFilename = path.basename(filePath)
@@ -406,13 +426,12 @@ class Cache {
    * @returns {*} - The stats
    */
   /* eslint-disable-next-line class-methods-use-this */
-  generateApiCacheStat(apiNames, totalCounts, cacheSizes) {
-    return apiNames.map((api, i) => {
-      const retVal = {}
-      retVal[`${api.applicationId} Count`] = totalCounts[i] || 0
-      retVal[`${api.applicationId} Cache`] = cacheSizes[i] || 0
-      return retVal
-    })
+  generateApiCacheStat(apiNames, totalCounts, cacheSizes, mode) {
+    return apiNames.map((api, i) => ({
+      name: `${api.applicationId} (${mode})`,
+      count: totalCounts[i] || 0,
+      cache: cacheSizes[i] || 0,
+    }))
   }
 
   /**
@@ -425,17 +444,17 @@ class Cache {
     const valuesTotalCounts = pointApis.map((api) => this.cacheStats[api.applicationId])
     const valuesCacheSizeActions = pointApis.map((api) => databaseService.getCount(api.database))
     const valuesCacheSizes = await Promise.all(valuesCacheSizeActions)
-    const pointApisStats = this.generateApiCacheStat(pointApis, valuesTotalCounts, valuesCacheSizes)
+    const pointApisStats = this.generateApiCacheStat(pointApis, valuesTotalCounts, valuesCacheSizes, 'points')
 
     // Get file APIs stats
     const fileApis = Object.values(this.apis).filter((api) => api.canHandleFiles)
     const filesTotalCounts = fileApis.map((api) => this.cacheStats[api.applicationId])
     const filesCacheSizeActions = fileApis.map((api) => databaseService.getFileCountForApi(this.filesDatabase, api.applicationId))
     const filesCacheSizes = await Promise.all(filesCacheSizeActions)
-    const fileApisStats = this.generateApiCacheStat(fileApis, filesTotalCounts, filesCacheSizes)
+    const fileApisStats = this.generateApiCacheStat(fileApis, filesTotalCounts, filesCacheSizes, 'files')
 
     // Merge results
-    return { ...[...pointApisStats, ...fileApisStats].reduce((total, current) => Object.assign(total, current), []) }
+    return [...pointApisStats, ...fileApisStats]
   }
 
   /**
@@ -444,12 +463,10 @@ class Cache {
    */
   async getCacheStatsForProtocols() {
     const protocols = this.engine.getActiveProtocols()
-    const protocolsStats = protocols.map((protocol) => {
-      const retVal = {}
-      retVal[`${protocol} Count`] = this.cacheStats[protocol] || 0
-      return retVal
-    })
-    return { ...protocolsStats.reduce((total, current) => Object.assign(total, current), []) }
+    return protocols.map((protocol) => ({
+      name: protocol,
+      count: this.cacheStats[protocol] || 0,
+    }))
   }
 }
 

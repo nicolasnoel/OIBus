@@ -1,3 +1,5 @@
+const Logger = require('../engine/Logger.class')
+
 /**
  * Class Protocol : provides general attributes and methods for protocols.
  * Building a new South Protocol means to extend this class, and to surcharge
@@ -34,7 +36,7 @@ class ProtocolHandler {
   constructor(dataSource, engine) {
     this.dataSource = dataSource
     this.engine = engine
-    this.logger = engine.logger
+    this.logger = new Logger(this.constructor.name)
   }
 
   connect() {
@@ -81,7 +83,11 @@ class ProtocolHandler {
    * @returns {string} - The decrypted password
    */
   decryptPassword(password) {
-    return this.engine.decryptPassword(password)
+    const decryptedPassword = this.engine.decryptPassword(password)
+    if (decryptedPassword == null) {
+      this.logger.error(`Error decrypting password for ${this.constructor.name}`)
+    }
+    return decryptedPassword || ''
   }
 }
 
