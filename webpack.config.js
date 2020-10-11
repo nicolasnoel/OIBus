@@ -1,4 +1,5 @@
 const path = require('path')
+const webpack = require('webpack')
 const HtmlWebpackPlugin = require('html-webpack-plugin')
 
 module.exports = {
@@ -12,6 +13,12 @@ module.exports = {
     alias: {
       'react-dom$': 'react-dom/profiling',
       'scheduler/tracing': 'scheduler/tracing-profiling',
+    },
+    fallback: {
+      path: require.resolve('path-browserify'),
+      stream: require.resolve('stream-browserify'),
+      util: require.resolve('util/'),
+      fs: false,
     },
   },
   // devServer: { contentBase: './build' },
@@ -46,6 +53,8 @@ module.exports = {
       },
     ],
   },
-  plugins: [new HtmlWebpackPlugin({ template: path.resolve('./src/client/index.html') })],
-  node: { fs: 'empty' },
+  plugins: [
+    new HtmlWebpackPlugin({ template: path.resolve('./src/client/index.html') }),
+    new webpack.DefinePlugin({ 'process.env': { NODE_ENV: JSON.stringify(process.env.NODE_ENV) } })],
+  node: false,
 }
