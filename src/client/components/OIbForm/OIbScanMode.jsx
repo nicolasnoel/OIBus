@@ -3,10 +3,11 @@ import PropTypes from 'prop-types'
 import { FormGroup, FormText, Label, Input, FormFeedback } from 'reactstrap'
 import { ConfigContext } from '../../context/configContext.jsx'
 
-const OIbScanMode = ({ label, help, valid, value, name, onChange }) => {
+const OIbScanMode = ({ label, help, valid, value, name, onChange, listenFlag }) => {
   const { newConfig } = React.useContext(ConfigContext)
   const scanModes = newConfig?.engine?.scanModes ?? [] // scan modes defined in engine
   const options = scanModes.map((e) => e.scanMode)
+  if (listenFlag) options.push('listen')
   if (options === null || options.length === 0) {
     options.push(['']) // empty string if no scan mode on engine
   }
@@ -56,7 +57,8 @@ OIbScanMode.propTypes = {
   valid: PropTypes.func,
   onChange: PropTypes.func.isRequired,
   value: PropTypes.string,
+  listenFlag: PropTypes.bool,
 }
-OIbScanMode.defaultProps = { label: null, help: null, valid: () => null, value: '' }
+OIbScanMode.defaultProps = { label: null, help: null, valid: () => null, value: '', listenFlag: true }
 
 export default OIbScanMode

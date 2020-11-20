@@ -1,5 +1,5 @@
 import React from 'react'
-import { notEmpty, hasLengthBetween, optional } from '../../services/validation.service'
+import { notEmpty, hasLengthBetween, optional, isEqual } from '../../services/validation.service'
 
 const schema = { name: 'MQTT' }
 schema.form = {
@@ -173,8 +173,11 @@ schema.points = {
     defaultValue: '',
   },
   scanMode: {
-    type: 'OIbScanMode',
+    // currently only the listen mode is supported for MQTT
+    type: 'OIbText',
     label: 'Scan Mode',
+    defaultValue: 'listen',
+    valid: isEqual('listen'),
   },
   topic: {
     type: 'OIbText',

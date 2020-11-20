@@ -48,6 +48,9 @@ const notEndsWith = (test, name = 'Value') => (val) => (
 const startsWith = (test, name = 'Value') => (val) => (
   val && val.startsWith(test) ? null : `${name} should start with ${test}`
 )
+const isEqual = (test, name = 'Value') => (val) => (
+  val && val === test ? null : `${name} should be ${test}`
+)
 const startsWithAnyOf = (tests, common = '', name = 'Value') => (val) => {
   switch (tests.length) {
     case 0:
@@ -83,4 +86,5 @@ export {
   startsWithAnyOf,
   combinedValidations,
   optional,
+  isEqual,
 }

@@ -35,7 +35,6 @@ const ScanModes = ({ scanModes }) => {
               </code>
             </p>
             <p>The table below gives several examples.</p>
-            <p>(A special scanMode - listen - needs to be defined for protocols if you have protocols reacting to events mode such as MQTT)</p>
             <div>
               <table>
                 <thead>
