@@ -1,8 +1,9 @@
 const fs = require('fs')
 const zlib = require('zlib')
 
-const Logger = require('../engine/Logger.class')
+const EncryptionService = require('../services/EncryptionService.class')
 const databaseService = require('../services/database.service')
+const Logger = require('../engine/Logger.class')
 
 /**
  * Class Protocol : provides general attributes and methods for protocols.
@@ -22,7 +23,6 @@ const databaseService = require('../services/database.service')
  * of values
  * - **addFile**: is the equivalent of addValues but for a file.
  * to the OIBus engine. More details on the Engine class.
- * - **decryptPassword**: to decrypt a password
  * - **logger**: to log an event with different levels (error,warning,info,debug)
  *
  * All other operations (cache, store&forward, communication to North applications) will be
@@ -40,14 +40,19 @@ class ProtocolHandler {
   constructor(dataSource, engine) {
     this.dataSource = dataSource
     this.engine = engine
-    this.logger = new Logger(this.constructor.name)
+    this.encryptionService = EncryptionService.getInstance()
     this.compressionLevel = 9
+    const { engineConfig } = this.engine.configService.getConfig()
+    this.engineConfig = engineConfig
+
+    const { logParameters } = this.dataSource
+    this.logger = new Logger()
+    this.logger.changeParameters(this.engineConfig.logParameters, logParameters)
   }
 
   async connect() {
     const { dataSourceId, protocol } = this.dataSource
-    const { engineConfig } = this.engine.configService.getConfig()
-    const databasePath = `${engineConfig.caching.cacheFolder}/${dataSourceId}.db`
+    const databasePath = `${this.engineConfig.caching.cacheFolder}/${dataSourceId}.db`
     this.configDatabase = await databaseService.createConfigDatabase(databasePath)
     this.logger.info(`Data source ${dataSourceId} started with protocol ${protocol}`)
   }
@@ -84,19 +89,6 @@ class ProtocolHandler {
    */
   addFile(filePath, preserveFiles) {
     this.engine.addFile(this.dataSource.dataSourceId, filePath, preserveFiles)
-  }
-
-  /**
-   * Decrypt password.
-   * @param {string} password - The password to decrypt
-   * @returns {string} - The decrypted password
-   */
-  decryptPassword(password) {
-    const decryptedPassword = this.engine.decryptPassword(password)
-    if (decryptedPassword == null) {
-      this.logger.error(`Error decrypting password for ${this.constructor.name}`)
-    }
-    return decryptedPassword || ''
   }
 
   /**

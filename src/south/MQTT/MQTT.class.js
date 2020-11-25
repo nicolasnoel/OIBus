@@ -2,6 +2,7 @@ const mqtt = require('mqtt')
 const mqttWildcard = require('mqtt-wildcard')
 const { vsprintf } = require('sprintf-js')
 const moment = require('moment-timezone')
+
 const ProtocolHandler = require('../ProtocolHandler.class')
 
 class MQTT extends ProtocolHandler {
@@ -29,6 +30,7 @@ class MQTT extends ProtocolHandler {
       timeStampFormat,
       timeStampTimezone,
     } = this.dataSource.MQTT
+
     if (moment.tz.zone(timeStampTimezone)) {
       this.timezone = timeStampTimezone
     } else {
@@ -37,7 +39,7 @@ class MQTT extends ProtocolHandler {
 
     this.url = url
     this.username = username
-    this.password = Buffer.from(this.decryptPassword(password))
+    this.password = Buffer.from(this.encryptionService.decryptText(password))
     this.qos = qos
     this.dataArrayPath = dataArrayPath
     this.valuePath = valuePath

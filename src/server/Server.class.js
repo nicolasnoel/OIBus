@@ -26,7 +26,7 @@ class Server {
     this.app = new Koa()
     // capture the engine and logger under app for reuse in routes.
     this.app.engine = engine
-    this.app.logger = new Logger('server')
+    this.app.logger = Logger.getDefaultLogger()
 
     // Get the config entries
     const { engineConfig } = engine.configService.getConfig()
@@ -36,7 +36,7 @@ class Server {
     this.user = user
 
     if (password) {
-      this.password = engine.decryptPassword(password)
+      this.password = engine.encryptionService.decryptText(password)
       if (this.password == null) {
         this.app.logger.error('Error decrypting admin password. Falling back to default')
       }

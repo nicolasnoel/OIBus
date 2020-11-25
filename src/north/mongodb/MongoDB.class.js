@@ -2,6 +2,7 @@
 
 const mongo = require('mongodb')
 const { vsprintf } = require('sprintf-js')
+
 const ApiHandler = require('../ApiHandler.class')
 
 /**
@@ -53,7 +54,7 @@ class MongoDB extends ApiHandler {
     const { host, user, password, db } = this.application.MongoDB
 
     // creating url connection string
-    const url = (user === '') ? `mongodb://${host}` : `mongodb://${user}:${this.decryptPassword(password)}@${host}`
+    const url = (user === '') ? `mongodb://${host}` : `mongodb://${user}:${this.encryptionService.decryptText(password)}@${host}`
 
     this.client = new mongo.MongoClient(url, { useUnifiedTopology: true })
     this.client.connect((error) => {

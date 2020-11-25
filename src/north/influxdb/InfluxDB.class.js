@@ -1,4 +1,5 @@
 const { vsprintf } = require('sprintf-js')
+
 const ApiHandler = require('../ApiHandler.class')
 
 /**
@@ -53,7 +54,7 @@ class InfluxDB extends ApiHandler {
    */
   async makeRequest(entries) {
     const { host, user, password, db, precision = 'ms', regExp, measurement, tags } = this.application.InfluxDB
-    const url = `${host}/write?u=${user}&p=${this.decryptPassword(password)}&db=${db}&precision=${precision}`
+    const url = `${host}/write?u=${user}&p=${this.encryptionService.decryptText(password)}&db=${db}&precision=${precision}`
 
     let body = ''
 

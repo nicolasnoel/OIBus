@@ -1,17 +1,12 @@
 const fs = require('fs')
 const crypto = require('crypto')
 
-const encryptionService = require('./encryption.service')
+const EncryptionService = require('./EncryptionService.class')
+const Logger = require('../engine/Logger.class')
 
 // Mock logger
-jest.mock('../engine/Logger.class', () => (function logger() {
-  return {
-    info: jest.fn(),
-    error: jest.fn(),
-    silly: jest.fn(),
-    warn: jest.fn(),
-  }
-}))
+jest.mock('../engine/Logger.class')
+Logger.getDefaultLogger = () => new Logger()
 
 beforeEach(() => {
   jest.resetAllMocks()
@@ -20,13 +15,15 @@ beforeEach(() => {
 
 describe('Encryption service', () => {
   const keyFolder = './tests/testKeys'
+  const encryptionService = new EncryptionService()
+  encryptionService.setKeyFolder(keyFolder)
 
   it('should not create key folder if exists', async () => {
     jest.spyOn(fs, 'existsSync').mockImplementation(() => true)
     jest.spyOn(fs, 'mkdirSync')
     fs.writeFileSync = jest.fn()
 
-    encryptionService.checkOrCreatePrivateKey(keyFolder)
+    encryptionService.checkOrCreatePrivateKey()
 
     expect(fs.mkdirSync).not.toBeCalled()
   })
@@ -36,7 +33,7 @@ describe('Encryption service', () => {
     fs.mkdirSync = jest.fn()
     fs.writeFileSync = jest.fn()
 
-    encryptionService.checkOrCreatePrivateKey(keyFolder)
+    encryptionService.checkOrCreatePrivateKey()
 
     expect(fs.mkdirSync).toBeCalledWith(keyFolder, { recursive: true })
   })
@@ -46,7 +43,7 @@ describe('Encryption service', () => {
     jest.spyOn(fs, 'writeFileSync')
     fs.writeFileSync = jest.fn()
 
-    encryptionService.checkOrCreatePrivateKey(keyFolder)
+    encryptionService.checkOrCreatePrivateKey()
 
     expect(fs.writeFileSync).not.toBeCalled()
   })
@@ -59,7 +56,7 @@ describe('Encryption service', () => {
     jest.spyOn(crypto, 'generateKeyPairSync').mockImplementation((_type, _option) => ({ privateKey, publicKey }))
     fs.writeFileSync = jest.fn()
 
-    encryptionService.checkOrCreatePrivateKey(keyFolder)
+    encryptionService.checkOrCreatePrivateKey()
 
     expect(crypto.generateKeyPairSync).toBeCalled()
     expect(fs.writeFileSync).toBeCalledTimes(2)
@@ -68,8 +65,8 @@ describe('Encryption service', () => {
   it('should encrypt/decrypt text', async () => {
     const textToEncrypt = 'text to encrypt'
 
-    const encryptedText = encryptionService.encryptText(textToEncrypt, keyFolder)
-    const decryptedText = encryptionService.decryptText(encryptedText, keyFolder)
+    const encryptedText = encryptionService.encryptText(textToEncrypt)
+    const decryptedText = encryptionService.decryptText(encryptedText)
 
     expect(decryptedText).toEqual(textToEncrypt)
   })
@@ -92,8 +89,8 @@ describe('Encryption service', () => {
       },
     }
 
-    encryptionService.encryptSecrets(objectToEncrypt, keyFolder)
-    encryptionService.decryptSecrets(objectToEncrypt, keyFolder)
+    encryptionService.encryptSecrets(objectToEncrypt)
+    encryptionService.decryptSecrets(objectToEncrypt)
 
     expect(decryptedObject).toEqual(objectToEncrypt)
   })
