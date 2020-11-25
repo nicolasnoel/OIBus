@@ -1,6 +1,11 @@
 const fetch = require('node-fetch')
 const axios = require('axios').default
 
+const Logger = require('../engine/Logger.class')
+// Mock logger before requiring request service
+jest.mock('../engine/Logger.class')
+Logger.getDefaultLogger = () => new Logger()
+
 const requestService = require('./request.service')
 
 // Mock libraries
@@ -15,18 +20,8 @@ jest.mock('request')
 jest.mock('node-fetch')
 const { Response } = jest.requireActual('node-fetch')
 
-// Mock logger
-jest.mock('../engine/Logger.class', () => (function logger() {
-  return {
-    info: jest.fn(),
-    error: jest.fn(),
-    silly: jest.fn(),
-  }
-}))
-
 // Mock engine
-const engine = jest.fn()
-engine.decryptPassword = (password) => password
+const engine = { encryptionService: { decryptText: (password) => password } }
 
 beforeEach(() => {
   jest.resetAllMocks()

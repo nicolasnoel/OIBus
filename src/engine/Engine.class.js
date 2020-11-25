@@ -4,7 +4,6 @@ const os = require('os')
 
 const moment = require('moment-timezone')
 
-const encryptionService = require('../services/encryption.service')
 const requestService = require('../services/request.service')
 const VERSION = require('../../package.json').version
 const databaseService = require('../services/database.service')
@@ -35,6 +34,7 @@ const Cache = require('./Cache.class')
 const ConfigService = require('../services/config.service.class')
 const Logger = require('./Logger.class')
 const AliveSignal = require('./AliveSignal.class')
+const EncryptionService = require('../services/EncryptionService.class')
 
 /**
  *
@@ -57,7 +57,7 @@ class Engine {
     const { engineConfig, southConfig } = this.configService.getConfig()
 
     // Configure the logger
-    this.logger = new Logger(this.constructor.name)
+    this.logger = Logger.getDefaultLogger()
     this.logger.changeParameters(engineConfig.logParameters)
 
     // Configure the Cache
@@ -70,8 +70,11 @@ class Engine {
     Version Node: ${process.version}
     Config file: ${this.configService.configFile}
     Cache folder: ${path.resolve(engineConfig.caching.cacheFolder)}`)
+
     // Check for private key
-    encryptionService.checkOrCreatePrivateKey(this.configService.keyFolder)
+    this.encryptionService = EncryptionService.getInstance()
+    this.encryptionService.setKeyFolder(this.configService.keyFolder)
+    this.encryptionService.checkOrCreatePrivateKey()
 
     // prepare config
     // Associate the scanMode to all corresponding data sources
@@ -120,7 +123,7 @@ class Engine {
     this.addValuesMessages = 0
     this.addValuesCount = 0
     this.addFileCount = 0
-    this.aliveSignalMessages = 0
+    this.forwardedAliveSignalMessages = 0
 
     // AliveSignal
     this.aliveSignal = new AliveSignal(this)
@@ -135,11 +138,8 @@ class Engine {
    */
   async addValues(dataSourceId, values) {
     this.logger.silly(`Engine: Add ${values ? values.length : '?'} values from ${dataSourceId}`)
-    const sanytizedValues = values.filter((value) => {
-      if (!value || !value.data.value || !value.timestamp || !value.pointId) return false
-      return true
-    })
-    await this.cache.cacheValues(dataSourceId, sanytizedValues)
+    const sanitizedValues = values.filter((value) => value?.data?.value !== undefined && value?.data?.value !== null)
+    await this.cache.cacheValues(dataSourceId, sanitizedValues)
   }
 
   /**
@@ -330,15 +330,6 @@ class Engine {
   }
 
   /**
-   * Decrypt password.
-   * @param {string} password - The password to decrypt
-   * @return {string|null} - The decrypted password
-   */
-  decryptPassword(password) {
-    return encryptionService.decryptText(password, this.configService.keyFolder)
-  }
-
-  /**
    * Return available North applications
    * @return {String[]} - Available North applications
    */
@@ -448,7 +439,7 @@ class Engine {
       addValuesMessages: this.addValuesMessages,
       addValuesCount: this.addValuesCount,
       addFileCount: this.addFileCount,
-      aliveSignalMessages: this.aliveSignalMessages,
+      forwardedAliveSignalMessages: this.forwardedAliveSignalMessages,
       logError: logsCount.error,
       logWarning: logsCount.warn,
       filesErrorCount,

@@ -3,21 +3,17 @@ const { Client } = require('pg')
 const ApiHandler = require('../ApiHandler.class')
 const InfluxDB = require('./TimescaleDB.class')
 const config = require('../../../tests/testConfig').default
+const EncryptionService = require('../../services/EncryptionService.class')
 
 // Mock logger
-jest.mock('../../engine/Logger.class', () => (function logger() {
-  return {
-    silly: jest.fn(),
-    debug: jest.fn(),
-    info: jest.fn(),
-    error: jest.fn(),
-  }
-}))
+jest.mock('../../engine/Logger.class')
+
+// Mock EncryptionService
+EncryptionService.getInstance = () => ({ decryptText: (password) => password })
 
 // Mock engine
 const engine = jest.createMockFromModule('../../engine/Engine.class')
-engine.configService = { getConfig: () => config.engine }
-engine.decryptPassword = (password) => password
+engine.configService = { getConfig: () => ({ engineConfig: config.engine }) }
 engine.sendRequest = jest.fn()
 
 jest.mock('pg', () => ({ Client: jest.fn() }))
